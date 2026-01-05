@@ -13,226 +13,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// model Users {
-//   id String @id @default(cuid())
-//   email String
-//   password String 
-//   phone String @unique
-//   firstName String
-//   lastName String
-//   dateOfBirth String
-//   gender String
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
-// }
-
-// model Users {
-//   id String @id @default(uuid())
-
-//   // ================= USER MODEL =================
-//   username         String   @unique
-//   firstName        String
-//   lastName         String
-//   fatherOrHusband  String
-//   gender           String
-//   bloodGroup       String?
-//   position         String?
-//   income           Int?
-//   academicQual     String?
-//   language         String?
-//   maritalStatus    String?
-//   spouseName       String?
-//   spousePhone      String?
-//   image            String?
-
-//   dob              DateTime
-//   phone            String   @unique
-//   email            String   @unique
-//   password         String
-
-//   empDate          DateTime
-//   empDateType      String   // permanent / contract
-
-//   // ================= KYC DETAILS =================
-//   aadharCard       String?  @unique
-//   aadharNo         String?  @unique
-//   panCard          String?  @unique
-//   panNo            String?  @unique
-
-//   // ================= NOMINEE DETAILS =================
-//   nomineeName      String?
-//   nomineePhone     String?
-//   nomineeAltPhone  String?
-//   nomineeRelation  String?
-//   nomineeAge       Int?
-//   nomineePanNo     String?
-//   nomineeAadhar    String?
-
-//   // ================= ADDRESS DETAILS =================
-//   addressLine      String?
-//   landmark         String?
-//   pinCode          String?
-
-//   // ================= BANK DETAILS =================
-//   bankName         String?
-//   branch           String?
-//   accountHolder    String?
-//   bankAccountNo    String?  @unique
-//   ifsc             String?
-
-//   // ================= OFFICE DETAILS =================
-//   refId            String?
-//   createdById      String?
-
-//   companyName      String
-//   companyId        String?
-//   companyAddress   String
-
-//   role             String
-//   roleName         String
-
-//   userAuthId       String?
-
-//   reasonForReject  String?
-
-//   passwordRequest  Boolean @default(false)
-//   deleteRequest    Boolean @default(false)
-//   messageRequest   Boolean @default(false)
-
-//   requesterName    String?
-//   requesterId      String?
-
-//   teamName         String?
-//   teamHeadName     String?
-//   teamHeadId       String?
-
-//   status           String   // pending / approved / rejected
-
-//   passwordChanged  Boolean  @default(false)
-//   tempPasswordToken   String?
-//   tempPasswordExpires DateTime?
-
-//   // ================= COMMON =================
-//   createdAt        DateTime @default(now())
-//   updatedAt        DateTime @updatedAt
-// }
-
-// // Admin Model
-// model Admin {
-//   id               String   @id @default(uuid())
-
-//   username         String   @unique
-//   first_name       String
-//   last_name        String
-//   address          String?
-//   img              String?
-//   phone            String
-//   alternative_phone String?
-//   email            String   @unique
-//   password         String
-
-//   company_id       String
-//   company_name     String
-//   role             String
-//   role_name        String
-//   user_auth_id     String?  @unique
-
-//   status            String   // active, inactive
-//   password_changed  Boolean  @default(false)
-
-//   createdAt        DateTime @default(now())
-//   updatedAt        DateTime @updatedAt
-// }
-
-// // Company Model
-// model Company {
-//   id                     String   @id @default(uuid())
-
-//   company                String
-//   address                String?
-//   img                    String?
-//   phone                  String
-//   email                  String   @unique
-
-//   opening_balance        Int?
-//   opening_balance_type   String?   // credit / debit
-//   opening_balance_date   DateTime?
-
-//   status                 String    // active, inactive
-//   modules                String?
-//   domain                 String?
-
-//   primary_colour         String?
-//   secondary_colour       String?
-
-//   authIdGeneration       String    // manual / auto
-//   auth_id_prefix         String?
-
-//   company_term           String?
-//   transaction_prefix    String?
-
-//   createdAt              DateTime @default(now())
-//   updatedAt              DateTime @updatedAt
-// }
-
-// // News model
-// model News {
-//   id            String   @id @default(uuid())
-
-//   title         String
-//   description   String
-//   date          DateTime
-//   time          String
-//   newsPicture   String?
-//   type          String
-
-//   company_id    String
-
-//   source        String?
-//   heading       String?
-
-//   createdAt     DateTime @default(now())
-//   updatedAt     DateTime @updatedAt
-// }
-
-// // followup model
-// model FollowUp {
-//   id               String   @id @default(uuid())
-
-//   user_id          String
-//   lead_name        String
-//   phone            String
-//   email            String?
-//   date             DateTime
-//   time             String
-
-//   followup_type    String
-//   project          String?
-//   followup_status  String
-//   priority         String
-//   comment          String?
-
-//   company_id       String
-
-//   createdAt        DateTime @default(now())
-//   updatedAt        DateTime @updatedAt
-// }
-
-// // gallery model
-// model Gallery {
-//   id             String   @id @default(uuid())
-
-//   file_name      String
-//   file_category  String
-//   company_id     String
-
-//   status         String
-//   scheduled_at   DateTime?
-
-//   createdAt      DateTime @default(now())
-//   updatedAt      DateTime @updatedAt
-// }
-
 //
 // ================================
 // ENUMS
@@ -277,6 +57,7 @@ enum UserStatus {
   PENDING
   APPROVED
   REJECTED
+  INACTIVE
 }
 
 enum AdminStatus {
@@ -345,8 +126,8 @@ enum RepeatType {
 model Users {
   id String @id @default(uuid())
 
-  username        String         @unique
-  firstName       String
+  username        String        
+  first_name       String
   lastName        String
   fatherOrHusband String
   gender          Gender
@@ -354,19 +135,16 @@ model Users {
   position        String?
   income          Int?
   academicQual    String?
-  language        String?
+  languages        String[]
   maritalStatus   MaritalStatus?
   spouseName      String?
   spousePhone     String?
   image           String?
 
   dob      DateTime
-  phone    String   @unique
-  email    String   @unique
+  phone    String   
+  email    String   
   password String
-
-  empDate     DateTime
-  empDateType EmploymentType
 
   // KYC
   aadharCard String? @unique
@@ -392,36 +170,23 @@ model Users {
   bankName      String?
   branch        String?
   accountHolder String?
-  bankAccountNo String? @unique
+  bankAccountNo String?
   ifsc          String?
 
   // Office
-  refId          String?
+  referId          String?
   createdById    String?
-  companyName    String
   companyId      String?
   companyAddress String
   role           String
-  roleName       String
   userAuthId     String?
 
   reasonForReject String?
 
-  passwordRequest Boolean @default(false)
-  deleteRequest   Boolean @default(false)
-  messageRequest  Boolean @default(false)
-
-  requesterName String?
-  requesterId   String?
-
-  teamName     String?
-  teamHeadName String?
   teamHeadId   String?
 
   status              UserStatus
   passwordChanged     Boolean    @default(false)
-  tempPasswordToken   String?
-  tempPasswordExpires DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -436,21 +201,18 @@ model Users {
 model Admin {
   id String @id @default(uuid())
 
-  username          String  @unique
+  username          String 
   first_name        String
   last_name         String
   address           String?
   img               String?
   phone             String
   alternative_phone String?
-  email             String  @unique
+  email             String 
   password          String
 
   company_id   String
-  company_name String
   role         String
-  role_name    String
-  user_auth_id String? @unique
 
   status           AdminStatus
   password_changed Boolean     @default(false)
@@ -472,20 +234,20 @@ model Company {
   address String?
   img     String?
   phone   String
-  email   String  @unique
+  email   String 
 
   opening_balance      Int?
   opening_balance_type BalanceType?
   opening_balance_date DateTime?
 
   status  CompanyStatus
-  modules String?
+  modules String[]
   domain  String?
 
   primary_colour   String?
   secondary_colour String?
 
-  authIdGeneration AuthIdGenerationType
+  auth_id_type AuthIdGenerationType
   auth_id_prefix   String?
 
   company_term       String?
