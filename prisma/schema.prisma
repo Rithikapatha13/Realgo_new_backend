@@ -1,4 +1,3 @@
-
 // prisma
 
 generator client {
@@ -122,7 +121,7 @@ enum RepeatType {
 model User {
   id String @id @default(uuid())
 
-  username        String
+  username        String         @unique
   firstName       String
   lastName        String
   fatherOrHusband String
@@ -138,24 +137,20 @@ model User {
   image           String?
 
   dob      DateTime
-  phone    String
-  email    String
+  phone    String   @unique
+  email    String   @unique
   password String
 
-  // KYC (kept unique as original)
-  aadharCard String? @unique
+  // KYC
+  aadharCard String?
   aadharNo   String? @unique
-  panCard    String? @unique
+  panCard    String?
   panNo      String? @unique
 
   // Nominee
   nomineeName     String?
   nomineePhone    String?
-  nomineeAltPhone String?
   nomineeRelation String?
-  nomineeAge      Int?
-  nomineePanNo    String?
-  nomineeAadhar   String?
 
   // Address
   addressLine String?
@@ -169,22 +164,46 @@ model User {
   bankAccountNo String?
   ifsc          String?
 
-  // Office
-  referId        String?
-  createdById    String?
-  companyId      String?
-  companyAddress String
-  role           String
-  userAuthId     String?
-  teamHeadId     String?
+  // Office - Self Relations
+  referId       String?
+  referer       User?   @relation("UserReferer", fields: [referId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  referredUsers User[]  @relation("UserReferer")
+
+  createdById String
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id])
+  roleId      String
+  role        Role    @relation(fields: [roleId], references: [id])
+  userAuthId  String
+
+  teamHeadId  String?
+  teamHead    User?   @relation("TeamHeadMembers", fields: [teamHeadId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  teamMembers User[]  @relation("TeamHeadMembers")
 
   reasonForReject String?
 
   status          UserStatus
-  passwordChanged Boolean @default(false)
+  passwordChanged Boolean    @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  followUps         FollowUp[]
+  notifications     Notification[]
+  notes             Note[]
+  leads             Lead[]
+  reminders         Reminder[]
+  requests          Request[]          @relation("UserRequests")
+  requestedByMe     Request[]          @relation("UserRequestedBy")
+  siteVisits        SiteVisit[]
+  pushNotifications PushNotification[]
+
+  @@index([companyId])
+  @@index([roleId])
+  @@index([status])
+  @@index([email])
+  @@index([referId])
+  @@index([teamHeadId])
 }
 
 //
@@ -203,17 +222,22 @@ model Admin {
   img              String?
   phone            String
   alternativePhone String?
-  email            String
+  email            String  @unique
   password         String
 
   companyId String
-  role      String
+  company   Company @relation(fields: [companyId], references: [id])
+  roleId    String
+  role      Role    @relation(fields: [roleId], references: [id])
 
   status          AdminStatus
-  passwordChanged Boolean @default(false)
+  passwordChanged Boolean     @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([roleId])
 }
 
 //
@@ -229,7 +253,7 @@ model Company {
   address String?
   img     String?
   phone   String
-  email   String
+  email   String  @unique
 
   openingBalance     Int?
   openingBalanceType BalanceType?
@@ -237,7 +261,7 @@ model Company {
 
   status  CompanyStatus
   modules String[]
-  domain  String?
+  domain  String?       @unique
 
   primaryColour   String?
   secondaryColour String?
@@ -245,11 +269,28 @@ model Company {
   authIdType   AuthIdGenerationType
   authIdPrefix String?
 
-  companyTerm        String?
+  companyTerm       String?
   transactionPrefix String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  users             User[]
+  admins            Admin[]
+  news              News[]
+  followUps         FollowUp[]
+  galleries         Gallery[]
+  notifications     Notification[]
+  portraits         Portrait[]
+  projects          Project[]
+  plots             Plot[]
+  highways          Highway[]
+  notes             Note[]
+  roles             Role[]
+  showcases         Showcase[]
+  pushNotifications PushNotification[]
+  videos            Video[]
+
+  @@index([status])
 }
 
 //
@@ -269,11 +310,15 @@ model News {
   type        NewsType
 
   companyId String
+  company   Company @relation(fields: [companyId], references: [id])
   source    String?
   heading   String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([date])
 }
 
 //
@@ -285,23 +330,31 @@ model News {
 model FollowUp {
   id String @id @default(uuid())
 
-  userId   String
-  leadName String
-  phone    String
-  email    String?
-  date     DateTime
-  time     String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  leadName  String
+  leadPhone String
+  leadEmail String?
+  date      DateTime
+  time      String
 
   followUpType   String
-  project        String?
+  projectId      String?
+  project        Project?         @relation(fields: [projectId], references: [id])
   followUpStatus FollowUpStatus
   priority       FollowUpPriority
   comment        String?
 
   companyId String
+  company   Company @relation(fields: [companyId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([projectId])
+  @@index([date])
 }
 
 //
@@ -316,12 +369,16 @@ model Gallery {
   fileName     String
   fileCategory String
   companyId    String
+  company      Company @relation(fields: [companyId], references: [id])
 
   status      GalleryStatus
   scheduledAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([status])
 }
 
 //
@@ -334,6 +391,7 @@ model Notification {
   id String @id @default(uuid())
 
   userId String
+  user   User   @relation(fields: [userId], references: [id])
   title  String
   body   String
 
@@ -342,12 +400,18 @@ model Notification {
 
   status      String
   companyId   String
+  company     Company @relation(fields: [companyId], references: [id])
   companyName String
 
   isRead Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([isRead])
+  @@index([timeStamp])
 }
 
 //
@@ -364,12 +428,15 @@ model Portrait {
   videoLink  String
 
   companyId String
+  company   Company @relation(fields: [companyId], references: [id])
 
   status      String
   description String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([companyId])
 }
 
 //
@@ -382,13 +449,15 @@ model Phase {
   id String @id @default(uuid())
 
   phaseName String
-  phases    String?
 
   projectId String
-  companyId String
+  project   Project @relation(fields: [projectId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  plots     Plot[]
+
+  @@index([projectId])
 }
 
 //
@@ -404,34 +473,44 @@ model Project {
   projectDescription String?
   projectAddress     String
 
-  projectImage             String?
-  projectWebsiteUrl        String?
-  projectVirtualViewLink   String?
+  projectImage           String?
+  projectWebsiteUrl      String?
+  projectVirtualViewLink String?
 
-  layoutImage        String?
-  brochures          String?
-  qrCode             String?
+  layoutImage String[]
+  brochures   String[]
+  qrCode      String[]
 
-  images              String?
-  highlights          String?
-  approvals           String?
-  approvalCopies      String?
+  images         String[]
+  highlights     String[]
+  approvals      String[]
+  approvalCopies String[]
 
-  sliders             String?
-  flyers              String?
-  videos              String?
+  sliders String[]
+  flyers  String[]
+  videos  String[]
 
-  locationHighlights  String?
+  locationHighlights String[]
 
   companyId String
+  highwayId String
+  highway   Highway @relation(fields: [highwayId], references: [id])
+  company   Company @relation(fields: [companyId], references: [id])
 
   latitude  String?
   longitude String?
 
-  incentivesLevel String?
+  incentivesLevel Json
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  followUps FollowUp[]
+  plots     Plot[]
+  leads     Lead[]
+  phases    Phase[]
+
+  @@index([companyId])
+  @@index([highwayId])
 }
 
 //
@@ -443,7 +522,8 @@ model Project {
 model Plot {
   id String @id @default(uuid())
 
-  phases       String?
+  phaseId      String?
+  phase        Phase?  @relation(fields: [phaseId], references: [id])
   plotCategory String
   facing       String?
 
@@ -452,6 +532,7 @@ model Plot {
 
   projectName String
   projectId   String
+  project     Project @relation(fields: [projectId], references: [id])
 
   plotStatus String
 
@@ -463,16 +544,22 @@ model Plot {
   longitude String?
 
   plotBookingNumber String?
-  plotBookingPlan  String?
+  plotBookingPlan   String?
 
   status        String
-  paymentType  String?
+  paymentType   String?
   paymentStatus String?
 
   companyId String
+  company   Company @relation(fields: [companyId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([phaseId])
+  @@index([companyId])
+  @@index([plotStatus])
 }
 
 //
@@ -488,9 +575,13 @@ model Highway {
   highwayIcon String?
 
   companyId String
+  company   Company @relation(fields: [companyId], references: [id])
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  projects  Project[]
+
+  @@index([companyId])
 }
 
 //
@@ -506,10 +597,15 @@ model Note {
   noteDescription String?
 
   userId    String
+  user      User    @relation(fields: [userId], references: [id])
   companyId String
+  company   Company @relation(fields: [companyId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([companyId])
 }
 
 //
@@ -522,6 +618,7 @@ model Lead {
   id String @id @default(uuid())
 
   userId String
+  user   User   @relation(fields: [userId], references: [id])
 
   leadName    String
   leadContact String
@@ -531,9 +628,9 @@ model Lead {
   leadOccupation String?
   leadCompany    String?
 
-  leadAge        Int?
-  gender         Gender?
-  maritalStatus  MaritalStatus?
+  leadAge       Int?
+  gender        Gender?
+  maritalStatus MaritalStatus?
 
   additionalInformation String?
 
@@ -545,8 +642,9 @@ model Lead {
 
   firstInteractionDate DateTime?
 
-  leadCategory         String?
-  projectInterestedIn  String?
+  leadCategory        String?
+  projectInterestedIn String?
+  project             Project? @relation(fields: [projectInterestedIn], references: [id])
 
   observations String?
   followUpDate DateTime?
@@ -558,6 +656,11 @@ model Lead {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([projectInterestedIn])
+  @@index([leadStatus])
+  @@index([date])
 }
 
 //
@@ -569,17 +672,21 @@ model Lead {
 model Reminder {
   id String @id @default(uuid())
 
-  userId       String
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
   type         String
   description  String
   date         DateTime
   time         String
   repeat       RepeatType
   selectedDays String?
-  companyId    String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([date])
 }
 
 //
@@ -591,9 +698,13 @@ model Reminder {
 model Request {
   id String @id @default(uuid())
 
-  requestType   String
-  userId        String
-  requestedBy   String
+  requestType String
+  userId      String
+  user        User   @relation("UserRequests", fields: [userId], references: [id])
+
+  requestedById String
+  requestBy     User   @relation("UserRequestedBy", fields: [requestedById], references: [id])
+
   requestedName String
   message       String?
   timestamp     DateTime
@@ -601,6 +712,10 @@ model Request {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([requestedById])
+  @@index([status])
 }
 
 //
@@ -612,13 +727,13 @@ model Request {
 model SuperAdmin {
   id String @id @default(uuid())
 
-  username String @unique
+  username  String  @unique
   firstName String
   lastName  String
   address   String?
   img       String?
   phone     String
-  email     String @unique
+  email     String  @unique
   password  String
 
   role       String
@@ -627,8 +742,8 @@ model SuperAdmin {
 
   status StatusType
 
-  passwordChanged Boolean
-  tempPassToken   String?
+  passwordChanged    Boolean
+  tempPassToken      String?
   tempTokenExpiredAt DateTime?
 
   createdAt DateTime @default(now())
@@ -650,11 +765,17 @@ model Role {
   status      StatusType
 
   companyId   String
+  company     Company @relation(fields: [companyId], references: [id])
   companyName String
   modules     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  users     User[]
+  admins    Admin[]
+
+  @@index([companyId])
+  @@index([status])
 }
 
 //
@@ -669,11 +790,15 @@ model Showcase {
   fileName     String
   fileCategory String
   platform     String
-  compId       String
-  status       StatusType
+  companyId    String
+  company      Company @relation(fields: [companyId], references: [id])
+
+  status StatusType
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([companyId])
 }
 
 //
@@ -685,17 +810,20 @@ model Showcase {
 model SiteVisit {
   id String @id @default(uuid())
 
-  userId   String
-  leadName String
-  phone    String
-  date     DateTime
-  time     String
+  userId           String
+  user             User     @relation(fields: [userId], references: [id])
+  leadName         String
+  phone            String
+  date             DateTime
+  time             String
   siteVisitPicture String?
-  companyId String
-  changeLog String?
+  changeLog        String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([date])
 }
 
 //
@@ -708,15 +836,19 @@ model PushNotification {
   id String @id @default(uuid())
 
   userId        String
+  user          User     @relation(fields: [userId], references: [id])
   fcmToken      String
   lastRequest   DateTime @default(now())
   timeStamp     DateTime @default(now())
   checkActivity DateTime @default(now())
   status        String
   companyId     String
+  company       Company  @relation(fields: [companyId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  @@index([userId])
+  @@index([companyId])
 }
 
 //
@@ -732,11 +864,15 @@ model Video {
   videoName  String
   videoLink  String
   companyId  String
-  status     String
+  company    Company @relation(fields: [companyId], references: [id])
+
+  status      String
   description String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([companyId])
 }
 
 //
@@ -757,4 +893,7 @@ model EventLog {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([timeStamp])
 }
