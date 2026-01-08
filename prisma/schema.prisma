@@ -1,8 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// prisma
 
 generator client {
   provider = "prisma-client-js"
@@ -116,18 +113,17 @@ enum RepeatType {
   MONTHLY
 }
 
-
 //
 // ================================
-// USERS MODEL
+// USERS
 // ================================
 //
 
-model Users {
+model User {
   id String @id @default(uuid())
 
-  username        String        
-  first_name       String
+  username        String
+  firstName       String
   lastName        String
   fatherOrHusband String
   gender          Gender
@@ -135,18 +131,18 @@ model Users {
   position        String?
   income          Int?
   academicQual    String?
-  languages        String[]
+  languages       String[]
   maritalStatus   MaritalStatus?
   spouseName      String?
   spousePhone     String?
   image           String?
 
   dob      DateTime
-  phone    String   
-  email    String   
+  phone    String
+  email    String
   password String
 
-  // KYC
+  // KYC (kept unique as original)
   aadharCard String? @unique
   aadharNo   String? @unique
   panCard    String? @unique
@@ -174,19 +170,18 @@ model Users {
   ifsc          String?
 
   // Office
-  referId          String?
+  referId        String?
   createdById    String?
   companyId      String?
   companyAddress String
   role           String
   userAuthId     String?
+  teamHeadId     String?
 
   reasonForReject String?
 
-  teamHeadId   String?
-
-  status              UserStatus
-  passwordChanged     Boolean    @default(false)
+  status          UserStatus
+  passwordChanged Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -194,28 +189,28 @@ model Users {
 
 //
 // ================================
-// ADMIN MODEL
+// ADMIN
 // ================================
 //
 
 model Admin {
   id String @id @default(uuid())
 
-  username          String 
-  first_name        String
-  last_name         String
-  address           String?
-  img               String?
-  phone             String
-  alternative_phone String?
-  email             String 
-  password          String
+  username         String
+  firstName        String
+  lastName         String
+  address          String?
+  img              String?
+  phone            String
+  alternativePhone String?
+  email            String
+  password         String
 
-  company_id   String
-  role         String
+  companyId String
+  role      String
 
-  status           AdminStatus
-  password_changed Boolean     @default(false)
+  status          AdminStatus
+  passwordChanged Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -223,7 +218,7 @@ model Admin {
 
 //
 // ================================
-// COMPANY MODEL
+// COMPANY
 // ================================
 //
 
@@ -234,24 +229,24 @@ model Company {
   address String?
   img     String?
   phone   String
-  email   String 
+  email   String
 
-  opening_balance      Int?
-  opening_balance_type BalanceType?
-  opening_balance_date DateTime?
+  openingBalance     Int?
+  openingBalanceType BalanceType?
+  openingBalanceDate DateTime?
 
   status  CompanyStatus
   modules String[]
   domain  String?
 
-  primary_colour   String?
-  secondary_colour String?
+  primaryColour   String?
+  secondaryColour String?
 
-  auth_id_type AuthIdGenerationType
-  auth_id_prefix   String?
+  authIdType   AuthIdGenerationType
+  authIdPrefix String?
 
-  company_term       String?
-  transaction_prefix String?
+  companyTerm        String?
+  transactionPrefix String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -259,7 +254,7 @@ model Company {
 
 //
 // ================================
-// NEWS MODEL
+// NEWS
 // ================================
 //
 
@@ -273,9 +268,9 @@ model News {
   newsPicture String?
   type        NewsType
 
-  company_id String
-  source     String?
-  heading    String?
+  companyId String
+  source    String?
+  heading   String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -283,399 +278,483 @@ model News {
 
 //
 // ================================
-// FOLLOW UP MODEL
+// FOLLOW UP
 // ================================
 //
 
 model FollowUp {
   id String @id @default(uuid())
 
-  user_id   String
-  lead_name String
-  phone     String
-  email     String?
-  date      DateTime
-  time      String
+  userId   String
+  leadName String
+  phone    String
+  email    String?
+  date     DateTime
+  time     String
 
-  followup_type   String
-  project         String?
-  followup_status FollowUpStatus
-  priority        FollowUpPriority
-  comment         String?
+  followUpType   String
+  project        String?
+  followUpStatus FollowUpStatus
+  priority       FollowUpPriority
+  comment        String?
 
-  company_id String
+  companyId String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-// ===============================
-// GALLERY MODEL
-// ===============================
+//
+// ================================
+// GALLERY
+// ================================
+//
+
 model Gallery {
   id String @id @default(uuid())
 
-  file_name     String
-  file_category String
-  company_id    String
+  fileName     String
+  fileCategory String
+  companyId    String
 
-  status        GalleryStatus
-  scheduled_at  DateTime?
+  status      GalleryStatus
+  scheduledAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-// ===============================
-// NOTIFICATIONS MODEL
-// ===============================
+//
+// ================================
+// NOTIFICATION
+// ================================
+//
+
 model Notification {
-  id                String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  userId            String
-  title             String
-  body              String
+  userId String
+  title  String
+  body   String
 
-  notification_type String
-  time_stamp        DateTime @default(now())
+  notificationType String
+  timeStamp        DateTime @default(now())
 
-  status            String   // delivered / pending / failed
-  company_id        String
-  company_name      String
+  status      String
+  companyId   String
+  companyName String
 
-  isRead            Boolean  @default(false)
+  isRead Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-// ===============================
-// PORTRAIT MODEL
-// ===============================
-model Potrait {
-  id          String @id @default(uuid())
+//
+// ================================
+// PORTRAIT
+// ================================
+//
 
-  video_title String
-  video_name  String?
-  video_link  String
+model Portrait {
+  id String @id @default(uuid())
 
-  Company_id  String
+  videoTitle String
+  videoName  String?
+  videoLink  String
 
-  status      String   // active / inactive
+  companyId String
+
+  status      String
   description String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-// ===============================
-// PHASE MODEL
-// ===============================
+//
+// ================================
+// PHASE
+// ================================
+//
+
 model Phase {
-  id         String @id @default(uuid())
+  id String @id @default(uuid())
 
-  phase_name String
-  phases     String?   // optional description / metadata
+  phaseName String
+  phases    String?
 
-  project_id String
-  company_id String
+  projectId String
+  companyId String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-// ===============================
-// PROJECT MODEL
-// ===============================
+//
+// ================================
+// PROJECT
+// ================================
+//
+
 model Project {
-  id                        String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  project_name              String
-  project_descripition      String?
-  project_address           String
+  projectName        String
+  projectDescription String?
+  projectAddress     String
 
-  project_image             String?
-  project_website_url       String?
-  project_virtual_view_link String?
+  projectImage             String?
+  projectWebsiteUrl        String?
+  projectVirtualViewLink   String?
 
-  layout_image              String?
-  brochures                 String?
-  QR_code                   String?
+  layoutImage        String?
+  brochures          String?
+  qrCode             String?
 
-  images                    String?
-  highlights                String?
-  approvals                 String?
-  approval_copies           String?
+  images              String?
+  highlights          String?
+  approvals           String?
+  approvalCopies      String?
 
-  sliders                   String?
-  flyers                    String?
-  videos                    String?
+  sliders             String?
+  flyers              String?
+  videos              String?
 
-  location_highlights       String?
+  locationHighlights  String?
 
-  company_id                String
+  companyId String
 
-  latitude                  String?
-  longitude                 String?
+  latitude  String?
+  longitude String?
 
-  incentives_level          String?
+  incentivesLevel String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-// ===============================
-// PLOT MODEL
-// ===============================
+//
+// ================================
+// PLOT
+// ================================
+//
+
 model Plot {
-  id                 String @id @default(uuid())
+  id String @id @default(uuid())
 
-  phases             String?
-  plot_category      String
-  facing             String?
+  phases       String?
+  plotCategory String
+  facing       String?
 
-  sqr_yards          Float
-  plot_number        String
+  sqrYards   Float
+  plotNumber String
 
-  project_name       String
-  project_id         String
+  projectName String
+  projectId   String
 
-  plot_status        String   // available / booked / blocked
+  plotStatus String
 
-  customer_name      String?
-  customer_contact   String?
-  customer_address   String?
+  customerName    String?
+  customerContact String?
+  customerAddress String?
 
-  latitude           String?
-  longitude          String?
+  latitude  String?
+  longitude String?
 
-  plot_booing_number String?
-  plot_booking_plan  String?
+  plotBookingNumber String?
+  plotBookingPlan  String?
 
-  status             String   // active / inactive
-  payment_type       String?  // cash / bank / emi
-  payment_status     String?  // pending / completed
+  status        String
+  paymentType  String?
+  paymentStatus String?
 
-  company_id         String
+  companyId String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-// ===============================
-// HIGHWAY MODEL
-// ===============================
+//
+// ================================
+// HIGHWAY
+// ================================
+//
+
 model Highway {
-  id           String @id @default(uuid())
+  id String @id @default(uuid())
 
-  highway_name String
-  highway_icon String?
+  highwayName String
+  highwayIcon String?
 
-  company_id   String
+  companyId String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-// ===============================
-// NOTE MODEL
-// ===============================
+//
+// ================================
+// NOTE
+// ================================
+//
+
 model Note {
-  id               String @id @default(uuid())
+  id String @id @default(uuid())
 
-  note_title       String
-  note_description String?
+  noteTitle       String
+  noteDescription String?
 
-  user_id          String
-  company_id       String
+  userId    String
+  companyId String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-// ===============================
-// LEAD MODEL
-// ===============================
+//
+// ================================
+// LEAD
+// ================================
+//
+
 model Lead {
-  id                     String @id @default(uuid())
+  id String @id @default(uuid())
 
-  user_id                String
+  userId String
 
-  lead_name              String
-  lead_contact           String
-  lead_email             String?
+  leadName    String
+  leadContact String
+  leadEmail   String?
 
-  lead_city              String?
-  lead_occupation        String?
-  lead_company           String?
+  leadCity       String?
+  leadOccupation String?
+  leadCompany    String?
 
-  lead_age               Int?
-  gender                 Gender?
-  marital_status         MaritalStatus?
+  leadAge        Int?
+  gender         Gender?
+  maritalStatus  MaritalStatus?
 
-  additional_information String?
+  additionalInformation String?
 
-  date                   DateTime
-  description            String?
+  date        DateTime
+  description String?
 
-  lead_source            String
-  lead_status            String   // new / contacted / converted / lost
+  leadSource String
+  leadStatus String
 
-  first_interaction_date DateTime?
+  firstInteractionDate DateTime?
 
-  lead_category          String?
-  project_interested_in  String?
+  leadCategory         String?
+  projectInterestedIn  String?
 
-  observations           String?
-  follow_up_date         DateTime?
+  observations String?
+  followUpDate DateTime?
 
-  assigned_to            String?
-  notes                  String?
+  assignedTo String?
+  notes      String?
 
-  company_id             String
+  companyId String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-
+//
+// ================================
+// REMINDER
+// ================================
+//
 
 model Reminder {
   id String @id @default(uuid())
 
-  user_id      String
+  userId       String
   type         String
   description  String
   date         DateTime
   time         String
   repeat       RepeatType
-  selected_days String?
-  company_id   String
+  selectedDays String?
+  companyId    String
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
+
+//
+// ================================
+// REQUEST
+// ================================
+//
 
 model Request {
   id String @id @default(uuid())
 
-  request_type   String
-  user_id        String
-  requested_by  String
-  requested_name String
-  message        String?
-  timestamp      DateTime
-  status         RequestStatus
+  requestType   String
+  userId        String
+  requestedBy   String
+  requestedName String
+  message       String?
+  timestamp     DateTime
+  status        RequestStatus
 
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
+
+//
+// ================================
+// SUPER ADMIN
+// ================================
+//
 
 model SuperAdmin {
   id String @id @default(uuid())
 
-  username   String @unique
-  first_name String
-  last_name  String
-  address    String?
-  img        String?
-  phone      String
-  email      String @unique
-  password   String
+  username String @unique
+  firstName String
+  lastName  String
+  address   String?
+  img       String?
+  phone     String
+  email     String @unique
+  password  String
 
   role       String
-  role_name  String
-  user_auth_id String?
+  roleName   String
+  userAuthId String?
 
-  status     StatusType
+  status StatusType
 
-  password_changed Boolean
-  temp_pass_token  String?
-  temp_token_expired_at DateTime?
+  passwordChanged Boolean
+  tempPassToken   String?
+  tempTokenExpiredAt DateTime?
 
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
+
+//
+// ================================
+// ROLE
+// ================================
+//
 
 model Role {
   id String @id @default(uuid())
 
-  role_name    String
-  role_no      Int
-  display_name String
-  status       StatusType
+  roleName    String
+  roleNo      Int
+  displayName String
+  status      StatusType
 
-  company_id   String
-  company_name String
-  modules      String?
+  companyId   String
+  companyName String
+  modules     String?
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
+
+//
+// ================================
+// SHOWCASE
+// ================================
+//
 
 model Showcase {
   id String @id @default(uuid())
 
-  file_name     String
-  file_category String
-  platform      String
-  comp_id       String
-  status        StatusType
+  fileName     String
+  fileCategory String
+  platform     String
+  compId       String
+  status       StatusType
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
+
+//
+// ================================
+// SITE VISIT
+// ================================
+//
 
 model SiteVisit {
   id String @id @default(uuid())
 
-  user_id     String
-  lead_name   String
-  phone       String
-  date        DateTime
-  time        String
-  site_visit_picture String?
-  company_id  String
-  change_log  String?
+  userId   String
+  leadName String
+  phone    String
+  date     DateTime
+  time     String
+  siteVisitPicture String?
+  companyId String
+  changeLog String?
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
-model push_notification {
+//
+// ================================
+// PUSH NOTIFICATION
+// ================================
+//
+
+model PushNotification {
   id String @id @default(uuid())
-  user_id    String
-  fcm_token  String
-  last_request DateTime @default(now())
-  timestamp   DateTime @default(now())
-  checkactivity DateTime @default(now())
-  status      String
-  company_id  String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  userId        String
+  fcmToken      String
+  lastRequest   DateTime @default(now())
+  timeStamp     DateTime @default(now())
+  checkActivity DateTime @default(now())
+  status        String
+  companyId     String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
-model Video{
-  id          String   @id @default(uuid())
-  video_title String
-  video_name  String
-  video_link  String
-  company_id  String
-  status      String
+//
+// ================================
+// VIDEO
+// ================================
+//
+
+model Video {
+  id String @id @default(uuid())
+
+  videoTitle String
+  videoName  String
+  videoLink  String
+  companyId  String
+  status     String
   description String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-model Event_logs {
-  id          String   @id @default(uuid())
-  category     String
-  action_by String
-  action_description String
+//
+// ================================
+// EVENT LOG
+// ================================
+//
 
-  timestamp   DateTime @default(now())
-  company_id  String
+model EventLog {
+  id String @id @default(uuid())
+
+  category          String
+  actionBy          String
+  actionDescription String
+
+  timeStamp DateTime @default(now())
+  companyId String
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

@@ -5,6 +5,7 @@ import prismaPlugin from "./plugins/prisma.js";
 import userAuth from "./routes/auth.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 
+
 const app = Fastify();
 
 // CORS
