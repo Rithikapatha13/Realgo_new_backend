@@ -33,16 +33,11 @@ enum BloodGroup {
 }
 
 enum StatusType {
-  ACTIVE
-  INACTIVE
+  VERIFIED
+  PENDING
+  NONE
 }
 
-enum MaritalStatus {
-  SINGLE
-  MARRIED
-  DIVORCED
-  WIDOWED
-}
 
 enum EmploymentType {
   PERMANENT
@@ -50,15 +45,17 @@ enum EmploymentType {
 }
 
 enum UserStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  INACTIVE
+ VERIFIED
+ PENDING
+ REJECT
+ HOLD
+ INACTIVE
 }
 
 enum AdminStatus {
-  ACTIVE
-  INACTIVE
+  VERIFIED
+  PENDING
+  NONE
 }
 
 enum CompanyStatus {
@@ -121,24 +118,24 @@ enum RepeatType {
 model User {
   id String @id @default(uuid())
 
-  username        String         @unique
+  username        String  
   firstName       String
-  lastName        String
-  fatherOrHusband String
-  gender          Gender
+  lastName        String?
+  fatherOrHusband String?
+  gender          Gender?
   bloodGroup      BloodGroup?
   position        String?
-  income          Int?
+  income          Float?
   academicQual    String?
   languages       String[]
-  maritalStatus   MaritalStatus?
+  maritalStatus   String?
   spouseName      String?
   spousePhone     String?
   image           String?
 
   dob      DateTime
-  phone    String   @unique
-  email    String   @unique
+  phone    String   
+  email    String   
   password String
 
   // KYC
@@ -166,19 +163,17 @@ model User {
 
   // Office - Self Relations
   referId       String?
-  referer       User?   @relation("UserReferer", fields: [referId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  referredUsers User[]  @relation("UserReferer")
+
 
   createdById String
   companyId   String
   company     Company @relation(fields: [companyId], references: [id])
   roleId      String
   role        Role    @relation(fields: [roleId], references: [id])
-  userAuthId  String
+  userAuthId  String?
 
   teamHeadId  String?
-  teamHead    User?   @relation("TeamHeadMembers", fields: [teamHeadId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  teamMembers User[]  @relation("TeamHeadMembers")
+
 
   reasonForReject String?
 
@@ -216,13 +211,13 @@ model Admin {
   id String @id @default(uuid())
 
   username         String
-  firstName        String
-  lastName         String
+  firstName        String?
+  lastName         String?
   address          String?
   img              String?
   phone            String
   alternativePhone String?
-  email            String  @unique
+  email            String?
   password         String
 
   companyId String
@@ -255,7 +250,7 @@ model Company {
   phone   String
   email   String  @unique
 
-  openingBalance     Int?
+  openingBalance Float?
   openingBalanceType BalanceType?
   openingBalanceDate DateTime?
 
@@ -266,7 +261,7 @@ model Company {
   primaryColour   String?
   secondaryColour String?
 
-  authIdType   AuthIdGenerationType
+  authIdType   AuthIdGenerationType?
   authIdPrefix String?
 
   companyTerm       String?
@@ -448,7 +443,7 @@ model Portrait {
 model Phase {
   id String @id @default(uuid())
 
-  phaseName String
+  phaseName String?
 
   projectId String
   project   Project @relation(fields: [projectId], references: [id])
@@ -500,7 +495,7 @@ model Project {
   latitude  String?
   longitude String?
 
-  incentivesLevel Json
+  incentivesLevel Json?
 
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
@@ -534,7 +529,7 @@ model Plot {
   projectId   String
   project     Project @relation(fields: [projectId], references: [id])
 
-  plotStatus String
+  plotStatus String?
 
   customerName    String?
   customerContact String?
@@ -630,7 +625,7 @@ model Lead {
 
   leadAge       Int?
   gender        Gender?
-  maritalStatus MaritalStatus?
+  maritalStatus String?
 
   additionalInformation String?
 
@@ -729,7 +724,7 @@ model SuperAdmin {
 
   username  String  @unique
   firstName String
-  lastName  String
+  lastName  String?
   address   String?
   img       String?
   phone     String
@@ -756,18 +751,19 @@ model SuperAdmin {
 // ================================
 //
 
+
 model Role {
   id String @id @default(uuid())
 
   roleName    String
-  roleNo      Int
+  roleNo      Int?
   displayName String
   status      StatusType
 
   companyId   String
   company     Company @relation(fields: [companyId], references: [id])
   companyName String
-  modules     String?
+  modules     String[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

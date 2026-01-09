@@ -4,14 +4,14 @@ import cors from "@fastify/cors";
 import prismaPlugin from "./plugins/prisma.js";
 import userAuth from "./routes/auth.routes.js";
 import authRoutes from "./routes/auth.routes.js";
-
+import rolesRoutes from "./routes/roles.routes.js";
 
 const app = Fastify();
 
 // CORS
 await app.register(cors, {
-  origin: true, // allow all origins
-  credentials: true,
+  origin: "*", // allow all origins
+  // credentials: true,
 });
 
 // Prisma Set up
@@ -25,6 +25,10 @@ app.get("/health", async () => {
 // Register routes later
 app.register(authRoutes, { prefix: "/api/auth" });
 
+
+// Roles route
+app.register(rolesRoutes, { prefix: "/api/roles" });
+
 // Start server
 const PORT = process.env.PORT || 3000;
 
@@ -35,3 +39,4 @@ try {
   console.error(err);
   process.exit(1);
 }
+
