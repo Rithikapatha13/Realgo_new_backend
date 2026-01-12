@@ -30,17 +30,28 @@ export default async function authRoutes(fastify) {
       }
 
       // Admin
-      const admin = await fastify.prisma.admin.findFirst({
-        where: { phone }
+      const admin = await fastify.prisma.admin.findMany({
+        where: { phone },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          company: {
+            select: {
+              id: true,
+              company: true,
+              img: true
+            }
+          }
+        }
       });
 
-      if (admin) {
-        return res.send({
-          success: true,
-          userType: "user",
-          companies: [{ companyId: admin.companyId }]
-        });
+
+      if (admin.length > 0) {
+        return res.code(200).send({ companies: admin, role: "admin" })
       }
+
+
 
       // User (multi-company)
       const users = await fastify.prisma.user.findMany({
@@ -64,7 +75,7 @@ export default async function authRoutes(fastify) {
       });
 
     } catch (error) {
-      fastify.log.error(error);
+      console.log(error)
       return res.code(500).send({
         success: false,
         message: "Internal server error"
@@ -121,6 +132,34 @@ export default async function authRoutes(fastify) {
         });
       }
 
+      const admin =await fastify.prisma.admin.findfirst({
+        where:{ phone, companyId }
+      });
+
+      if (!admin) {
+        return res.code(404).send({
+          success:false,
+          message: "Admin user not found"
+          });
+      }
+
+      const validAdminPassword = await comparePassword(password, admin.password);
+      if (!validAdminPassword) {
+        return res.code(401).send({
+          success: false,
+          message: "Invalid credentials"
+        });
+      }
+
+      // Default password rule
+      if (!admin.passwordChanged) {
+        return res.code(403).send({
+          success: false,
+          message: "Please change your password before continuing"
+        });
+      }
+    
+      
       const user = await fastify.prisma.user.findFirst({
         where: { phone, companyId }
       });

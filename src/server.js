@@ -6,7 +6,10 @@ import userAuth from "./routes/auth.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import rolesRoutes from "./routes/roles.routes.js";
 
-const app = Fastify();
+const app = Fastify({
+  logger: true
+});
+
 
 // CORS
 await app.register(cors, {
