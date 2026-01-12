@@ -86,6 +86,7 @@ export default async function authRoutes(fastify) {
   // =====================================================
   // LOGIN
   // =====================================================
+
   fastify.post("/login", async (req, res) => {
     const { phone, password, companyId } = req.body;
 
@@ -97,124 +98,98 @@ export default async function authRoutes(fastify) {
     }
 
     try {
+      let authUser = null;
+      let userType = null;
+
       // ---------------- SUPER ADMIN ----------------
-      const superAdmin = await fastify.prisma.superAdmin.findFirst({
+      authUser = await fastify.prisma.superAdmin.findFirst({
         where: { phone }
       });
 
-      if (superAdmin) {
-        const valid = await comparePassword(password, superAdmin.password);
-        if (!valid) {
-          return res.code(401).send({
-            success: false,
-            message: "Invalid credentials"
-          });
-        }
-
-        const token = generateToken({
-          userId: superAdmin.id,
-          phone,
-          userType: "superadmin"
-        });
-
-        return res.send({
-          success: true,
-          token,
-          userType: "superadmin"
-        });
+      if (authUser) {
+        userType = "superadmin";
       }
-
       // ---------------- ADMIN / USER ----------------
-      if (!companyId) {
-        return res.code(400).send({
-          success: false,
-          message: "Company selection is required"
-        });
-      }
-
-      const admin =await fastify.prisma.admin.findfirst({
-        where:{ phone, companyId }
-      });
-
-      if (!admin) {
-        return res.code(404).send({
-          success:false,
-          message: "Admin user not found"
+      else {
+        if (!companyId) {
+          return res.code(400).send({
+            success: false,
+            message: "Company selection is required"
           });
-      }
+        }
 
-      const validAdminPassword = await comparePassword(password, admin.password);
-      if (!validAdminPassword) {
-        return res.code(401).send({
-          success: false,
-          message: "Invalid credentials"
+        authUser = await fastify.prisma.admin.findFirst({
+          where: { phone, companyId }
         });
+
+        if (authUser) {
+          userType = "admin";
+        } else {
+          authUser = await fastify.prisma.user.findFirst({
+            where: { phone, companyId }
+          });
+          userType = authUser ? "user" : null;
+        }
       }
 
-      // Default password rule
-      if (!admin.passwordChanged) {
-        return res.code(403).send({
-          success: false,
-          message: "Please change your password before continuing"
-        });
-      }
-    
-      
-      const user = await fastify.prisma.user.findFirst({
-        where: { phone, companyId }
-      });
-
-      if (!user) {
+      if (!authUser) {
         return res.code(404).send({
           success: false,
-          message: "User not found for selected company"
+          message: "User not found"
         });
       }
 
-      const validPassword = await comparePassword(password, user.password);
-      if (!validPassword) {
+      // ---------------- PASSWORD VALIDATION ----------------
+      const isValidPassword = await comparePassword(password, authUser.password);
+      if (!isValidPassword) {
         return res.code(401).send({
           success: false,
           message: "Invalid credentials"
         });
       }
 
-      // Default password rule
-      if (!user.passwordChanged) {
+      // ---------------- DEFAULT PASSWORD RULE ----------------
+      if (authUser.passwordChanged === false) {
         return res.code(403).send({
           success: false,
           message: "Please change your password before continuing"
         });
       }
 
-      // Same password across companies check
-      const reusedPassword = await fastify.prisma.user.findFirst({
-        where: {
-          phone,
-          password: user.password,
-          NOT: { companyId }
-        }
-      });
-
-      if (reusedPassword) {
-        return res.code(403).send({
-          success: false,
-          message: "Same password cannot be used across companies"
+      // ---------------- SAME PASSWORD ACROSS COMPANIES ----------------
+      if (userType === "user") {
+        const reusedPassword = await fastify.prisma.user.findFirst({
+          where: {
+            phone,
+            password: authUser.password,
+            NOT: { companyId }
+          }
         });
+
+        if (reusedPassword) {
+          return res.code(403).send({
+            success: false,
+            message: "Same password cannot be used across companies"
+          });
+        }
       }
 
-      const token = generateToken({
-        userId: user.id,
+      // ---------------- TOKEN ----------------
+      const tokenPayload = {
+        userId: authUser.id,
         phone,
-        userType: "user",
-        companyId,
-        role: user.role
-      });
+        userType
+      };
+
+      if (companyId) tokenPayload.companyId = companyId;
+      if (authUser.role) tokenPayload.role = authUser.role;
+
+      const token = generateToken(tokenPayload);
 
       return res.send({
         success: true,
         token,
-        userType: "user"
+        userType
       });
 
     } catch (error) {
@@ -225,6 +200,7 @@ export default async function authRoutes(fastify) {
       });
     }
   });
+  
 
   // =====================================================
   // CHANGE PASSWORD
