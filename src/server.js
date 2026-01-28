@@ -5,11 +5,11 @@ import prismaPlugin from "./plugins/prisma.js";
 import userAuth from "./routes/auth.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import rolesRoutes from "./routes/roles.routes.js";
+import commonRoutes from "./routes/common.routes.js";
 
 const app = Fastify({
-  logger: true
+  logger: true,
 });
-
 
 // CORS
 await app.register(cors, {
@@ -26,8 +26,13 @@ app.get("/health", async () => {
 });
 
 // Register routes later
-app.register(authRoutes, { prefix: "/api/auth" });
-
+app.register(
+  async function (routes) {
+    routes.register(authRoutes, { prefix: "/auth" });
+    routes.register(commonRoutes, { prefix: "/common" });
+  },
+  { prefix: "/api" },
+);
 
 // Roles route
 app.register(rolesRoutes, { prefix: "/api/roles" });
@@ -42,4 +47,3 @@ try {
   console.error(err);
   process.exit(1);
 }
-
