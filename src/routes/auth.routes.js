@@ -200,6 +200,7 @@ export default async function authRoutes(fastify) {
       });
     }
   });
+  // console.log(token)
   
 
   // =====================================================

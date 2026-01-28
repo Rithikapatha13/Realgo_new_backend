@@ -5,6 +5,8 @@ import prismaPlugin from "./plugins/prisma.js";
 import userAuth from "./routes/auth.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import rolesRoutes from "./routes/roles.routes.js";
+import { teamTreeRoutes } from "./routes/tree.routes.js";
+
 
 const app = Fastify({
   logger: true
@@ -32,8 +34,12 @@ app.register(authRoutes, { prefix: "/api/auth" });
 // Roles route
 app.register(rolesRoutes, { prefix: "/api/roles" });
 
+// tree route
+app.register(teamTreeRoutes, { prefix: "/api/tree" });
+
+
 // Start server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 
 try {
   await app.listen({ port: PORT, host: "0.0.0.0" });
