@@ -38,18 +38,17 @@ enum StatusType {
   NONE
 }
 
-
 enum EmploymentType {
   PERMANENT
   CONTRACT
 }
 
 enum UserStatus {
- VERIFIED
- PENDING
- REJECT
- HOLD
- INACTIVE
+  VERIFIED
+  PENDING
+  REJECT
+  HOLD
+  INACTIVE
 }
 
 enum AdminStatus {
@@ -118,7 +117,7 @@ enum RepeatType {
 model User {
   id String @id @default(uuid())
 
-  username        String  
+  username        String
   firstName       String
   lastName        String?
   fatherOrHusband String?
@@ -134,8 +133,8 @@ model User {
   image           String?
 
   dob      DateTime
-  phone    String   
-  email    String   
+  phone    String
+  email    String
   password String
 
   // KYC
@@ -162,8 +161,7 @@ model User {
   ifsc          String?
 
   // Office - Self Relations
-  referId       String?
-
+  referId String?
 
   createdById String
   companyId   String
@@ -172,8 +170,7 @@ model User {
   role        Role    @relation(fields: [roleId], references: [id])
   userAuthId  String?
 
-  teamHeadId  String?
-
+  teamHeadId String?
 
   reasonForReject String?
 
@@ -206,7 +203,13 @@ model User {
 // ADMIN
 // ================================
 //
-
+// 1709197660415-profile.png
+// 1709197660415-profile.png
+// 1736320809130-cropped-image.jpg
+// 1709197660415-profile.png
+// 1709197660415-profile.png
+// 1709197660415-profile.png
+// 1709197660415-profile.png
 model Admin {
   id String @id @default(uuid())
 
@@ -214,7 +217,7 @@ model Admin {
   firstName        String?
   lastName         String?
   address          String?
-  img              String?
+  image            String?
   phone            String
   alternativePhone String?
   email            String?
@@ -250,7 +253,7 @@ model Company {
   phone   String
   email   String  @unique
 
-  openingBalance Float?
+  openingBalance     Float?
   openingBalanceType BalanceType?
   openingBalanceDate DateTime?
 
@@ -726,7 +729,7 @@ model SuperAdmin {
   firstName String
   lastName  String?
   address   String?
-  img       String?
+  image     String?
   phone     String
   email     String  @unique
   password  String
@@ -751,7 +754,6 @@ model SuperAdmin {
 // ================================
 //
 
-
 model Role {
   id String @id @default(uuid())
 
@@ -761,7 +763,7 @@ model Role {
   status      StatusType
 
   companyId   String
-  company     Company @relation(fields: [companyId], references: [id])
+  company     Company  @relation(fields: [companyId], references: [id])
   companyName String
   modules     String[]
 
