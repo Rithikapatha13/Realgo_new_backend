@@ -1,0 +1,34 @@
+Environment variables loaded from .env
+Prisma schema loaded from prisma\schema.prisma
+
+Error: Prisma schema validation - (validate wasm)
+Error code: P1012
+[1;91merror[0m: [1mError parsing attribute "@default": The defined default value `ACTIVE` is not a valid value of the enum specified for the field.[0m
+  [1;94m-->[0m  [4mprisma\schema.prisma:657[0m
+[1;94m   | [0m
+[1;94m656 | [0m  companyId String
+[1;94m657 | [0m  status    StatusType [1;91m@default(ACTIVE)[0m
+[1;94m   | [0m
+[1;91merror[0m: [1mError parsing attribute "@default": The defined default value `ACTIVE` is not a valid value of the enum specified for the field.[0m
+  [1;94m-->[0m  [4mprisma\schema.prisma:671[0m
+[1;94m   | [0m
+[1;94m670 | [0m  bifurcated    Boolean?
+[1;94m671 | [0m  status        StatusType [1;91m@default(ACTIVE)[0m
+[1;94m   | [0m
+[1;91merror[0m: [1mError parsing attribute "@default": The defined default value `ACTIVE` is not a valid value of the enum specified for the field.[0m
+  [1;94m-->[0m  [4mprisma\schema.prisma:683[0m
+[1;94m   | [0m
+[1;94m682 | [0m  companyId     String
+[1;94m683 | [0m  status        StatusType [1;91m@default(ACTIVE)[0m
+[1;94m   | [0m
+[1;91merror[0m: [1mError parsing attribute "@default": The defined default value `ACTIVE` is not a valid value of the enum specified for the field.[0m
+  [1;94m-->[0m  [4mprisma\schema.prisma:744[0m
+[1;94m   | [0m
+[1;94m743 | [0m  companyId        String
+[1;94m744 | [0m  status           StatusType [1;91m@default(ACTIVE)[0m
+[1;94m   | [0m
+
+Validation Error Count: 4
+[Context: validate]
+
+Prisma CLI Version : 5.22.0

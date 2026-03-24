@@ -1,5 +1,3 @@
-// prisma
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,11 +7,544 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-//
-// ================================
-// ENUMS
-// ================================
-//
+model User {
+  id                String             @id @default(uuid())
+  username          String
+  firstName         String
+  lastName          String?
+  fatherOrHusband   String?
+  gender            Gender?
+  bloodGroup        BloodGroup?
+  position          String?
+  income            Float?
+  academicQual      String?
+  languages         String[]
+  maritalStatus     String?
+  spouseName        String?
+  spousePhone       String?
+  image             String?
+  dob               DateTime
+  phone             String
+  email             String
+  password          String
+  aadharCard        String?
+  aadharNo          String?           
+  panCard           String?
+  panNo             String?            
+  nomineeName       String?
+  nomineePhone      String?
+  nomineeRelation   String?
+  addressLine       String?
+  landmark          String?
+  pinCode           String?
+  bankName          String?
+  branch            String?
+  accountHolder     String?
+  bankAccountNo     String?
+  ifsc              String?
+  referId           String?
+  createdById       String
+  companyId         String
+  roleId            String
+  userAuthId        String?
+  teamHeadId        String?
+  reasonForReject   String?
+  status            UserStatus
+  passwordChanged   Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  followUps         FollowUp[]
+  leads             Lead[]
+  notes             Note[]
+  notifications     Notification[]
+  pushNotifications PushNotification[]
+  reminders         Reminder[]
+  requestedByMe     Request[]          @relation("UserRequestedBy")
+  requests          Request[]          @relation("UserRequests")
+  siteVisits        SiteVisit[]
+  company           Company            @relation(fields: [companyId], references: [id])
+  role              Role               @relation(fields: [roleId], references: [id])
+
+  @@index([companyId])
+  @@index([roleId])
+  @@index([status])
+  @@index([email])
+  @@index([referId])
+  @@index([teamHeadId])
+}
+
+model Admin {
+  id               String      @id @default(uuid())
+  username         String
+  address          String?
+  image            String?
+  phone            String
+  email            String?
+  password         String
+  status           AdminStatus
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  alternativePhone String?
+  companyId        String
+  firstName        String?
+  lastName         String?
+  passwordChanged  Boolean     @default(false)
+  roleId           String
+  company          Company     @relation(fields: [companyId], references: [id])
+  role             Role        @relation(fields: [roleId], references: [id])
+}
+
+model Company {
+  id                 String                @id @default(uuid())
+  company            String
+  address            String?
+  img                String?
+  phone              String
+  email              String                @unique
+  openingBalance     Float?
+  openingBalanceType BalanceType?
+  openingBalanceDate DateTime?
+  status             CompanyStatus
+  modules            String[]
+  domain             String?               @unique
+  primaryColour      String?
+  secondaryColour    String?
+  authIdType         AuthIdGenerationType?
+  authIdPrefix       String?
+  companyTerm        String?
+  transactionPrefix  String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  followUps          FollowUp[]
+  galleries          Gallery[]
+  highways           Highway[]
+  news               News[]
+  notes              Note[]
+  notifications      Notification[]
+  plots              Plot[]
+  portraits          Portrait[]
+  projects           Project[]
+  pushNotifications  PushNotification[]
+  roles              Role[]
+  showcases          Showcase[]
+  users              User[]
+  admins             Admin[]
+  videos             Video[]
+
+  @@index([status])
+}
+
+model News {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  date        DateTime
+  time        String
+  newsPicture String?
+  type        NewsType
+  companyId   String
+  source      String?
+  heading     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  company     Company  @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+  @@index([date])
+}
+
+model FollowUp {
+  id             String           @id @default(uuid())
+  userId         String
+  leadName       String
+  leadPhone      String?
+  leadEmail      String?
+  date           DateTime
+  time           String
+  followUpType   String?
+  projectId      String?
+  followUpStatus FollowUpStatus?
+  priority       FollowUpPriority
+  comment        String?
+  companyId      String
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  company        Company          @relation(fields: [companyId], references: [id])
+  project        Project?         @relation(fields: [projectId], references: [id])
+  user           User             @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([projectId])
+  @@index([date])
+}
+
+model Gallery {
+  id           String        @id @default(uuid())
+  fileName     String
+  fileCategory String
+  companyId    String
+  status       GalleryStatus
+  scheduledAt  DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  company      Company       @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+  @@index([status])
+}
+
+model Notification {
+  id               String   @id @default(uuid())
+  userId           String
+  title            String
+  body             String
+  notificationType String
+  timeStamp        DateTime @default(now())
+  status           String
+  companyId        String
+  companyName      String
+  isRead           Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  company          Company  @relation(fields: [companyId], references: [id])
+  user             User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([isRead])
+  @@index([timeStamp])
+}
+
+model Portrait {
+  id          String   @id @default(uuid())
+  videoTitle  String
+  videoName   String?
+  videoLink   String
+  companyId   String
+  status      String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  company     Company  @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+}
+
+model Phase {
+  id        String   @id @default(uuid())
+  phaseName String?
+  projectId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  project   Project  @relation(fields: [projectId], references: [id])
+  plots     Plot[]
+
+  @@index([projectId])
+}
+
+model Project {
+  id                     String     @id @default(uuid())
+  projectName            String
+  projectDescription     String?
+  projectAddress         String
+  projectImage           String?
+  projectWebsiteUrl      String?
+  projectVirtualViewLink String?
+  layoutImage            String[]
+  brochures              String[]
+  qrCode                 String[]
+  images                 String[]
+  highlights             String[]
+  approvals              String[]
+  approvalCopies         String[]
+  sliders                String[]
+  flyers                 String[]
+  videos                 String[]
+  locationHighlights     String[]
+  companyId              String
+  highwayId              String
+  latitude               String?
+  longitude              String?
+  incentivesLevel        Json?
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+  followUps              FollowUp[]
+  leads                  Lead[]
+  phases                 Phase[]
+  plots                  Plot[]
+  company                Company    @relation(fields: [companyId], references: [id])
+  highway                Highway    @relation(fields: [highwayId], references: [id])
+
+  @@index([companyId])
+  @@index([highwayId])
+}
+
+model Plot {
+  id                    String    @id @default(uuid())
+  phaseId               String?
+  plotCategory          String
+  facing                String?
+  sqrYards              Float
+  plotNumber            String
+  projectName           String
+  projectId             String
+  plotStatus            String?
+  customerName          String?
+  customerContact       String?
+  customerAddress       String?
+  latitude              String?
+  longitude             String?
+  plotBookingNumber     String?
+  plotBookingPlan       String?
+  status                String
+  paymentType           String?
+  paymentStatus         String?
+  companyId             String
+  totalCost             String?
+  paidAmount            String?
+  remainingAmount       String?
+  paymentImage          String?
+  paymentMode           String?
+  aadhar                String?
+  referId               String?
+  teamHeadId            String?
+  associateId           String?
+  associateUserAuthId   String?
+  reasonForRejection    String?
+  point                 String?
+  pbNumber              String?
+  bookingDate           DateTime?
+  registeredDate        DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  company               Company   @relation(fields: [companyId], references: [id])
+  phase                 Phase?    @relation(fields: [phaseId], references: [id])
+  project               Project   @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+  @@index([phaseId])
+  @@index([companyId])
+  @@index([plotStatus])
+}
+
+model Highway {
+  id          String    @id @default(uuid())
+  highwayName String
+  highwayIcon String?
+  companyId   String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  company     Company   @relation(fields: [companyId], references: [id])
+  projects    Project[]
+
+  @@index([companyId])
+}
+
+model Note {
+  id              String   @id @default(uuid())
+  noteTitle       String?
+  noteDescription String?
+  userId          String
+  companyId       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  company         Company  @relation(fields: [companyId], references: [id])
+  user            User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([companyId])
+}
+
+model Lead {
+  id                    String    @id @default(uuid())
+  userId                String
+  leadName              String
+  leadContact           String
+  leadEmail             String?
+  leadCity              String?
+  leadOccupation        String?
+  leadCompany           String?
+  leadAge               Int?
+  gender                Gender?
+  maritalStatus         String?
+  additionalInformation String?
+  date                  DateTime
+  description           String?
+  leadSource            String
+  leadStatus            String
+  firstInteractionDate  DateTime?
+  leadCategory          String?
+  projectInterestedIn   String?
+  observations          String?
+  followUpDate          DateTime?
+  assignedTo            String?
+  notes                 String?
+  companyId             String
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  project               Project?  @relation(fields: [projectInterestedIn], references: [id])
+  user                  User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([projectInterestedIn])
+  @@index([leadStatus])
+  @@index([date])
+}
+
+model Reminder {
+  id           String     @id @default(uuid())
+  userId       String
+  type         String
+  description  String
+  date         DateTime
+  time         String
+  repeat       RepeatType
+  selectedDays String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  user         User       @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([date])
+}
+
+model Request {
+  id            String        @id @default(uuid())
+  requestType   String
+  userId        String
+  requestedById String
+  requestedName String
+  message       String?
+  timestamp     DateTime
+  status        RequestStatus
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  requestBy     User          @relation("UserRequestedBy", fields: [requestedById], references: [id])
+  user          User          @relation("UserRequests", fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([requestedById])
+  @@index([status])
+}
+
+model SuperAdmin {
+  id                 String     @id @default(uuid())
+  username           String
+  address            String?
+  image              String?
+  phone              String
+  email              String
+  password           String
+  role               String
+  status             StatusType
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  firstName          String
+  lastName           String?
+  passwordChanged    Boolean
+  roleName           String
+  tempPassToken      String?
+  tempTokenExpiredAt DateTime?
+  userAuthId         String?
+}
+
+model Role {
+  id          String     @id @default(uuid())
+  roleName    String
+  roleNo      Int?
+  displayName String
+  status      RoleStatus
+  companyId   String
+  companyName String
+  modules     String[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  company     Company    @relation(fields: [companyId], references: [id])
+  users       User[]
+  admins      Admin[]
+
+  @@index([companyId])
+  @@index([status])
+}
+
+model Showcase {
+  id           String     @id @default(uuid())
+  fileName     String
+  fileCategory String
+  platform     String
+  companyId    String
+  status       StatusType
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  company      Company    @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+}
+
+model SiteVisit {
+  id               String   @id @default(uuid())
+  userId           String
+  leadName         String
+  phone            String
+  date             DateTime
+  time             String
+  siteVisitPicture String?
+  changeLog        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([date])
+}
+
+model PushNotification {
+  id            String   @id @default(uuid())
+  userId        String
+  fcmToken      String
+  lastRequest   DateTime @default(now())
+  timeStamp     DateTime @default(now())
+  checkActivity DateTime @default(now())
+  status        String
+  companyId     String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  company       Company  @relation(fields: [companyId], references: [id])
+  user          User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([companyId])
+}
+
+model Video {
+  id          String   @id @default(uuid())
+  videoTitle  String
+  videoName   String
+  videoLink   String
+  companyId   String
+  status      String
+  description String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  company     Company  @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+}
+
+model EventLog {
+  id                String   @id @default(uuid())
+  category          String
+  actionBy          String
+  actionDescription String
+  timeStamp         DateTime @default(now())
+  companyId         String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([timeStamp])
+}
 
 enum Gender {
   MALE
@@ -74,8 +605,8 @@ enum AuthIdGenerationType {
 
 enum NewsType {
   GENERAL
-  ANNOUNCEMENT
-  ALERT
+  DAILY
+  INDUSTRY
 }
 
 enum FollowUpStatus {
@@ -106,792 +637,159 @@ enum RepeatType {
   DAILY
   WEEKLY
   MONTHLY
+  NONE
 }
 
-//
-// ================================
-// USERS
-// ================================
-//
-
-model User {
-  id String @id @default(uuid())
-
-  username        String
-  firstName       String
-  lastName        String?
-  fatherOrHusband String?
-  gender          Gender?
-  bloodGroup      BloodGroup?
-  position        String?
-  income          Float?
-  academicQual    String?
-  languages       String[]
-  maritalStatus   String?
-  spouseName      String?
-  spousePhone     String?
-  image           String?
-
-  dob      DateTime
-  phone    String
-  email    String
-  password String
-
-  // KYC
-  aadharCard String?
-  aadharNo   String? @unique
-  panCard    String?
-  panNo      String? @unique
-
-  // Nominee
-  nomineeName     String?
-  nomineePhone    String?
-  nomineeRelation String?
-
-  // Address
-  addressLine String?
-  landmark    String?
-  pinCode     String?
-
-  // Bank
-  bankName      String?
-  branch        String?
-  accountHolder String?
-  bankAccountNo String?
-  ifsc          String?
-
-  // Office - Self Relations
-  referId String?
-
-  createdById String
-  companyId   String
-  company     Company @relation(fields: [companyId], references: [id])
-  roleId      String
-  role        Role    @relation(fields: [roleId], references: [id])
-  userAuthId  String?
-
-  teamHeadId String?
-
-  reasonForReject String?
-
-  status          UserStatus
-  passwordChanged Boolean    @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  followUps         FollowUp[]
-  notifications     Notification[]
-  notes             Note[]
-  leads             Lead[]
-  reminders         Reminder[]
-  requests          Request[]          @relation("UserRequests")
-  requestedByMe     Request[]          @relation("UserRequestedBy")
-  siteVisits        SiteVisit[]
-  pushNotifications PushNotification[]
-
-  @@index([companyId])
-  @@index([roleId])
-  @@index([status])
-  @@index([email])
-  @@index([referId])
-  @@index([teamHeadId])
+enum RoleStatus {
+  ACTIVE
+  INACTIVE
 }
 
-//
-// ================================
-// ADMIN
-// ================================
-//
-// 1709197660415-profile.png
-// 1709197660415-profile.png
-// 1736320809130-cropped-image.jpg
-// 1709197660415-profile.png
-// 1709197660415-profile.png
-// 1709197660415-profile.png
-// 1709197660415-profile.png
-model Admin {
-  id String @id @default(uuid())
+// ============== FINANCE MODULE MODELS ==============
 
-  username         String
-  firstName        String?
-  lastName         String?
-  address          String?
-  image            String?
-  phone            String
-  alternativePhone String?
-  email            String?
-  password         String
-
+model AccountTree {
+  id        String   @id @default(uuid())
+  name      String
+  code      String
+  parentId  String?
+  type      AccountType // ASSET, LIABILITY, INCOME, EXPENSE
   companyId String
-  company   Company @relation(fields: [companyId], references: [id])
-  roleId    String
-  role      Role    @relation(fields: [roleId], references: [id])
-
-  status          AdminStatus
-  passwordChanged Boolean     @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([companyId])
-  @@index([roleId])
+  status    FinanceStatus @default(ACTIVE)
+  company   Company  @relation(fields: [companyId], references: [id])
+  parent    AccountTree? @relation("AccountTreeHierarchy", fields: [parentId], references: [id])
+  children  AccountTree[] @relation("AccountTreeHierarchy")
+  ledgers   Ledger[]
+  @@unique([code, companyId])
 }
 
-//
-// ================================
-// COMPANY
-// ================================
-//
-
-model Company {
-  id String @id @default(uuid())
-
-  company String
-  address String?
-  img     String?
-  phone   String
-  email   String  @unique
-
-  openingBalance     Float?
-  openingBalanceType BalanceType?
-  openingBalanceDate DateTime?
-
-  status  CompanyStatus
-  modules String[]
-  domain  String?       @unique
-
-  primaryColour   String?
-  secondaryColour String?
-
-  authIdType   AuthIdGenerationType?
-  authIdPrefix String?
-
-  companyTerm       String?
-  transactionPrefix String?
-
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  users             User[]
-  admins            Admin[]
-  news              News[]
-  followUps         FollowUp[]
-  galleries         Gallery[]
-  notifications     Notification[]
-  portraits         Portrait[]
-  projects          Project[]
-  plots             Plot[]
-  highways          Highway[]
-  notes             Note[]
-  roles             Role[]
-  showcases         Showcase[]
-  pushNotifications PushNotification[]
-  videos            Video[]
-
-  @@index([status])
+model Ledger {
+  id            String   @id @default(uuid())
+  name          String
+  accountTreeId String
+  companyId     String
+  bifurcated    Boolean?
+  status        FinanceStatus @default(ACTIVE)
+  accountTree   AccountTree @relation(fields: [accountTreeId], references: [id])
+  company       Company  @relation(fields: [companyId], references: [id])
+  subledgers    SubLedger[]
+  transactionEntries TransactionEntry[]
 }
 
-//
-// ================================
-// NEWS
-// ================================
-//
-
-model News {
-  id String @id @default(uuid())
-
-  title       String
-  description String
-  date        DateTime
-  time        String
-  newsPicture String?
-  type        NewsType
-
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id])
-  source    String?
-  heading   String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([companyId])
-  @@index([date])
+model SubLedger {
+  id            String   @id @default(uuid())
+  name          String
+  ledgerId      String
+  companyId     String
+  status        FinanceStatus @default(ACTIVE)
+  ledger        Ledger @relation(fields: [ledgerId], references: [id])
+  company       Company  @relation(fields: [companyId], references: [id])
+  transactionEntries TransactionEntry[]
 }
 
-//
-// ================================
-// FOLLOW UP
-// ================================
-//
-
-model FollowUp {
-  id String @id @default(uuid())
-
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  leadName  String
-  leadPhone String
-  leadEmail String?
-  date      DateTime
-  time      String
-
-  followUpType   String
-  projectId      String?
-  project        Project?         @relation(fields: [projectId], references: [id])
-  followUpStatus FollowUpStatus
-  priority       FollowUpPriority
-  comment        String?
-
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-  @@index([companyId])
-  @@index([projectId])
-  @@index([date])
-}
-
-//
-// ================================
-// GALLERY
-// ================================
-//
-
-model Gallery {
-  id String @id @default(uuid())
-
-  fileName     String
-  fileCategory String
-  companyId    String
-  company      Company @relation(fields: [companyId], references: [id])
-
-  status      GalleryStatus
-  scheduledAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([companyId])
-  @@index([status])
-}
-
-//
-// ================================
-// NOTIFICATION
-// ================================
-//
-
-model Notification {
-  id String @id @default(uuid())
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
-  title  String
-  body   String
-
-  notificationType String
-  timeStamp        DateTime @default(now())
-
-  status      String
-  companyId   String
-  company     Company @relation(fields: [companyId], references: [id])
-  companyName String
-
-  isRead Boolean @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-  @@index([companyId])
-  @@index([isRead])
-  @@index([timeStamp])
-}
-
-//
-// ================================
-// PORTRAIT
-// ================================
-//
-
-model Portrait {
-  id String @id @default(uuid())
-
-  videoTitle String
-  videoName  String?
-  videoLink  String
-
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id])
-
-  status      String
-  description String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([companyId])
-}
-
-//
-// ================================
-// PHASE
-// ================================
-//
-
-model Phase {
-  id String @id @default(uuid())
-
-  phaseName String?
-
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  plots     Plot[]
-
-  @@index([projectId])
-}
-
-//
-// ================================
-// PROJECT
-// ================================
-//
-
-model Project {
-  id String @id @default(uuid())
-
-  projectName        String
-  projectDescription String?
-  projectAddress     String
-
-  projectImage           String?
-  projectWebsiteUrl      String?
-  projectVirtualViewLink String?
-
-  layoutImage String[]
-  brochures   String[]
-  qrCode      String[]
-
-  images         String[]
-  highlights     String[]
-  approvals      String[]
-  approvalCopies String[]
-
-  sliders String[]
-  flyers  String[]
-  videos  String[]
-
-  locationHighlights String[]
-
-  companyId String
-  highwayId String
-  highway   Highway @relation(fields: [highwayId], references: [id])
-  company   Company @relation(fields: [companyId], references: [id])
-
-  latitude  String?
-  longitude String?
-
-  incentivesLevel Json?
-
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  followUps FollowUp[]
-  plots     Plot[]
-  leads     Lead[]
-  phases    Phase[]
-
-  @@index([companyId])
-  @@index([highwayId])
-}
-
-//
-// ================================
-// PLOT
-// ================================
-//
-
-model Plot {
-  id String @id @default(uuid())
-
-  phaseId      String?
-  phase        Phase?  @relation(fields: [phaseId], references: [id])
-  plotCategory String
-  facing       String?
-
-  sqrYards   Float
-  plotNumber String
-
-  projectName String
-  projectId   String
-  project     Project @relation(fields: [projectId], references: [id])
-
-  plotStatus String?
-
-  customerName    String?
-  customerContact String?
-  customerAddress String?
-
-  latitude  String?
-  longitude String?
-
-  plotBookingNumber String?
-  plotBookingPlan   String?
-
-  status        String
-  paymentType   String?
-  paymentStatus String?
-
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([projectId])
-  @@index([phaseId])
-  @@index([companyId])
-  @@index([plotStatus])
-}
-
-//
-// ================================
-// HIGHWAY
-// ================================
-//
-
-model Highway {
-  id String @id @default(uuid())
-
-  highwayName String
-  highwayIcon String?
-
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id])
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  projects  Project[]
-
-  @@index([companyId])
-}
-
-//
-// ================================
-// NOTE
-// ================================
-//
-
-model Note {
-  id String @id @default(uuid())
-
-  noteTitle       String
-  noteDescription String?
-
-  userId    String
-  user      User    @relation(fields: [userId], references: [id])
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-  @@index([companyId])
-}
-
-//
-// ================================
-// LEAD
-// ================================
-//
-
-model Lead {
-  id String @id @default(uuid())
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
-
-  leadName    String
-  leadContact String
-  leadEmail   String?
-
-  leadCity       String?
-  leadOccupation String?
-  leadCompany    String?
-
-  leadAge       Int?
-  gender        Gender?
-  maritalStatus String?
-
-  additionalInformation String?
-
-  date        DateTime
-  description String?
-
-  leadSource String
-  leadStatus String
-
-  firstInteractionDate DateTime?
-
-  leadCategory        String?
-  projectInterestedIn String?
-  project             Project? @relation(fields: [projectInterestedIn], references: [id])
-
-  observations String?
-  followUpDate DateTime?
-
-  assignedTo String?
-  notes      String?
-
-  companyId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-  @@index([projectInterestedIn])
-  @@index([leadStatus])
-  @@index([date])
-}
-
-//
-// ================================
-// REMINDER
-// ================================
-//
-
-model Reminder {
-  id String @id @default(uuid())
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
-
-  type         String
-  description  String
-  date         DateTime
-  time         String
-  repeat       RepeatType
-  selectedDays String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-  @@index([date])
-}
-
-//
-// ================================
-// REQUEST
-// ================================
-//
-
-model Request {
-  id String @id @default(uuid())
-
-  requestType String
-  userId      String
-  user        User   @relation("UserRequests", fields: [userId], references: [id])
-
-  requestedById String
-  requestBy     User   @relation("UserRequestedBy", fields: [requestedById], references: [id])
-
-  requestedName String
-  message       String?
-  timestamp     DateTime
-  status        RequestStatus
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-  @@index([requestedById])
-  @@index([status])
-}
-
-//
-// ================================
-// SUPER ADMIN
-// ================================
-//
-
-model SuperAdmin {
-  id String @id @default(uuid())
-
-  username  String  @unique
-  firstName String
-  lastName  String?
+model Party {
+  id        String   @id @default(uuid())
+  name      String
+  email     String?
+  phone     String?
   address   String?
-  image     String?
-  phone     String
-  email     String  @unique
-  password  String
-
-  role       String
-  roleName   String
-  userAuthId String?
-
-  status StatusType
-
-  passwordChanged    Boolean
-  tempPassToken      String?
-  tempTokenExpiredAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  panNumber String?
+  gstNumber String?
+  type      PartyType // VENDOR, CUSTOMER, EMPLOYEE, OTHER
+  companyId String
+  transactions Transaction[]
+  company   Company  @relation(fields: [companyId], references: [id])
 }
 
-//
-// ================================
-// ROLE
-// ================================
-//
+model Transaction {
+  id               String   @id @default(uuid())
+  transactionType  TransactionType // RECEIPT, PAYMENT, JOURNAL, CHEQUE_ISSUE
+  transactionDate  DateTime
+  referenceNumber  String?  @unique
+  narration        String?
+  totalAmount      Float
+  status           TransactionStatus @default(ACTIVE)
+  companyId        String
+  createdById      String
+  relatedTransactionId String?
+  partyId          String?
+  projectId        String?
+  documentUrl      String?
+  company          Company  @relation(fields: [companyId], references: [id])
+  createdBy        User     @relation(fields: [createdById], references: [id])
+  relatedTransaction Transaction? @relation("RelatedTransactions", fields: [relatedTransactionId], references: [id])
+  relatedByTransactions Transaction[] @relation("RelatedTransactions")
+  party            Party?   @relation(fields: [partyId], references: [id])
+  project          Project? @relation(fields: [projectId], references: [id])
+  entries          TransactionEntry[]
 
-model Role {
-  id String @id @default(uuid())
-
-  roleName    String
-  roleNo      Int?
-  displayName String
-  status      StatusType
-
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id])
-  companyName String
-  modules     String[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  users     User[]
-  admins    Admin[]
-
-  @@index([companyId])
   @@index([status])
-}
-
-//
-// ================================
-// SHOWCASE
-// ================================
-//
-
-model Showcase {
-  id String @id @default(uuid())
-
-  fileName     String
-  fileCategory String
-  platform     String
-  companyId    String
-  company      Company @relation(fields: [companyId], references: [id])
-
-  status StatusType
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
   @@index([companyId])
+  @@index([transactionType])
 }
 
-//
-// ================================
-// SITE VISIT
-// ================================
-//
-
-model SiteVisit {
-  id String @id @default(uuid())
-
-  userId           String
-  user             User     @relation(fields: [userId], references: [id])
-  leadName         String
-  phone            String
-  date             DateTime
-  time             String
-  siteVisitPicture String?
-  changeLog        String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-  @@index([date])
+model TransactionEntry {
+  id               String   @id @default(uuid())
+  transactionId    String
+  ledgerId         String
+  subledgerId      String?
+  amount           Float
+  entryType        EntryType // DEBIT, CREDIT
+  narration        String?
+  tdsTaxPercentage Float?
+  tdsTaxAmount     Float?
+  gstTaxPercentage Float?
+  gstTaxAmount     Float?
+  isTaxInclusive   Boolean?
+  companyId        String
+  status           FinanceStatus @default(ACTIVE)
+  transaction      Transaction @relation(fields: [transactionId], references: [id])
+  ledger           Ledger   @relation(fields: [ledgerId], references: [id])
+  subledger        SubLedger? @relation(fields: [subledgerId], references: [id])
+  company          Company  @relation(fields: [companyId], references: [id])
 }
 
-//
-// ================================
-// PUSH NOTIFICATION
-// ================================
-//
-
-model PushNotification {
-  id String @id @default(uuid())
-
-  userId        String
-  user          User     @relation(fields: [userId], references: [id])
-  fcmToken      String
-  lastRequest   DateTime @default(now())
-  timeStamp     DateTime @default(now())
-  checkActivity DateTime @default(now())
-  status        String
+model Payment {
+  id            String   @id @default(uuid())
+  project       String
+  accountNumber String
+  accountName   String
+  paymentQRcode String
   companyId     String
   company       Company  @relation(fields: [companyId], references: [id])
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@index([userId])
-  @@index([companyId])
 }
 
-//
-// ================================
-// VIDEO
-// ================================
-//
-
-model Video {
-  id String @id @default(uuid())
-
-  videoTitle String
-  videoName  String
-  videoLink  String
-  companyId  String
-  company    Company @relation(fields: [companyId], references: [id])
-
-  status      String
-  description String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([companyId])
+enum AccountType {
+  ASSET
+  LIABILITY
+  INCOME
+  EXPENSE
 }
 
-//
-// ================================
-// EVENT LOG
-// ================================
-//
+enum TransactionType {
+  RECEIPT
+  PAYMENT
+  JOURNAL
+  CHEQUE_ISSUE
+}
 
-model EventLog {
-  id String @id @default(uuid())
+enum TransactionStatus {
+  ACTIVE
+  CANCELLED
+}
 
-  category          String
-  actionBy          String
-  actionDescription String
+enum EntryType {
+  DEBIT
+  CREDIT
+}
 
-  timeStamp DateTime @default(now())
-  companyId String
+enum PartyType {
+  VENDOR
+  CUSTOMER
+  EMPLOYEE
+  OTHER
+}
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([companyId])
-  @@index([timeStamp])
+enum FinanceStatus {
+  ACTIVE
+  INACTIVE
 }

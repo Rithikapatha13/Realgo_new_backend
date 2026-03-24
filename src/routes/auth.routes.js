@@ -130,6 +130,8 @@ export default async function authRoutes(fastify) {
               select: {
                 img: true,
                 company: true,
+                primaryColour: true,
+                secondaryColour: true,
               },
             },
             role: {
@@ -150,6 +152,8 @@ export default async function authRoutes(fastify) {
                 select: {
                   img: true,
                   company: true,
+                  primaryColour: true,
+                  secondaryColour: true,
                 },
               },
               role: {
@@ -234,6 +238,8 @@ export default async function authRoutes(fastify) {
         roleId: authUser.roleId,
         userName: authUser.username,
         companyImg: authUser.company.img,
+        primaryColour: authUser.company.primaryColour,
+        secondaryColour: authUser.company.secondaryColour,
       };
 
       const token = generateToken(tokenPayload);
@@ -253,7 +259,7 @@ export default async function authRoutes(fastify) {
     }
   });
   // console.log(token)
-  
+
 
   // =====================================================
   // CHANGE PASSWORD

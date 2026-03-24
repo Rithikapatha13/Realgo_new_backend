@@ -7,6 +7,11 @@ export default async function commonRoutes(fastify) {
   fastify.post("/presigned-url", async (req, res) => {
     try {
       const { fileType } = req.body;
+      console.log("Presigned URL request for fileType:", fileType);
+
+      if (!fileType) {
+        return res.code(400).send({ success: false, message: "fileType is required" });
+      }
 
       const ext = fileType.split("/")[1];
       const key = `realgo/images/${crypto.randomUUID()}.${ext}`;
@@ -29,8 +34,8 @@ export default async function commonRoutes(fastify) {
         fileUrl,
       });
     } catch (err) {
-      console.error(err);
-      return res.code(500).send({ success: false });
+      console.error("❌ Error generating presigned URL:", err);
+      return res.code(500).send({ success: false, error: err.message });
     }
   });
 
@@ -57,6 +62,30 @@ export default async function commonRoutes(fastify) {
     } catch (error) {
       console.log(error);
       return res.code(500).send({ success: false, error });
+    }
+  });
+
+  fastify.get("/proxy-image", async (req, res) => {
+    try {
+      const { url, filename } = req.query;
+      if (!url) return res.code(400).send({ error: "URL is required" });
+
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
+
+      const contentType = response.headers.get("content-type");
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      res.header("Content-Type", contentType);
+      res.header("Access-Control-Allow-Origin", "*"); // Ensure CORS is allowed from our own proxy if needed
+      if (filename) {
+        res.header("Content-Disposition", `attachment; filename="${filename}"`);
+      }
+      return res.send(buffer);
+    } catch (error) {
+      console.error("Proxy Error:", error);
+      return res.code(500).send({ error: error.message });
     }
   });
 }

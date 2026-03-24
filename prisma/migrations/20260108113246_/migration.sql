@@ -1,2 +1,0 @@
--- AlterTable
-ALTER TABLE "Company" ALTER COLUMN "openingBalance" SET DATA TYPE DOUBLE PRECISION;
