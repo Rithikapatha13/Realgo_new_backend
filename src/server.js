@@ -20,6 +20,7 @@ import newsRoutes from "./routes/news.routes.js";
 import videoRoutes from "./routes/video.routes.js";
 import showcaseRoutes from "./routes/showcase.routes.js";
 import portraitVideoRoutes from "./routes/portraitVideo.routes.js";
+import superadminRoutes from "./routes/superadmin.routes.js";
 
 const app = Fastify({
   logger: true,
@@ -50,6 +51,9 @@ app.register(
   },
   { prefix: "/api" },
 );
+
+app.register(superadminRoutes, { prefix: "/api/superadmin" });
+
 
 // Roles route
 app.register(rolesRoutes, { prefix: "/api/roles" });

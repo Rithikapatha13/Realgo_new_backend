@@ -231,15 +231,15 @@ export default async function authRoutes(fastify) {
         email: authUser.email,
         image: authUser.image,
         companyId: authUser.companyId,
-        companyName: authUser.company.company,
+        companyName: authUser.company?.company,
         referId: authUser.referId,
         teamHeadId: authUser.teamHeadId,
-        role: authUser.role.roleName,
+        role: authUser.roleName || authUser.role?.roleName,
         roleId: authUser.roleId,
         userName: authUser.username,
-        companyImg: authUser.company.img,
-        primaryColour: authUser.company.primaryColour,
-        secondaryColour: authUser.company.secondaryColour,
+        companyImg: authUser.company?.img,
+        primaryColour: authUser.company?.primaryColour,
+        secondaryColour: authUser.company?.secondaryColour,
       };
 
       const token = generateToken(tokenPayload);

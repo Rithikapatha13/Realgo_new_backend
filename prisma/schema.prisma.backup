@@ -629,7 +629,6 @@ enum AdminStatus {
 enum CompanyStatus {
   ACTIVE
   INACTIVE
-  DELETED
 }
 
 enum BalanceType {

@@ -1,0 +1,8 @@
+﻿Environment variables loaded from .env
+Prisma schema loaded from prisma\schema.prisma
+Datasource "db": PostgreSQL database "neondb", schema "public" at "ep-summer-star-a1yen5u8-pooler.ap-southeast-1.aws.neon.tech"
+
+3 migrations found in prisma/migrations
+
+Database schema is up to date!
+
