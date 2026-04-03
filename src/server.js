@@ -21,6 +21,7 @@ import videoRoutes from "./routes/video.routes.js";
 import showcaseRoutes from "./routes/showcase.routes.js";
 import portraitVideoRoutes from "./routes/portraitVideo.routes.js";
 import superadminRoutes from "./routes/superadmin.routes.js";
+import { financeRoutes } from "./routes/finance.routes.js";
 
 const app = Fastify({
   logger: true,
@@ -81,6 +82,7 @@ app.register(newsRoutes, { prefix: "/api" });
 app.register(videoRoutes, { prefix: "/api" });
 app.register(showcaseRoutes, { prefix: "/api" });
 app.register(portraitVideoRoutes, { prefix: "/api" });
+app.register(financeRoutes, { prefix: "/api/finance" });
 
 
 // Start server
