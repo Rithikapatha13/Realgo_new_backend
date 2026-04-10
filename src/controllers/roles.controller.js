@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 
 export async function createRole(req, reply) {
     try {
-        const {
+        let {
             roleName,
             displayName,
             roleNo,
@@ -11,31 +11,37 @@ export async function createRole(req, reply) {
             companyName,
         } = req.body;
 
-        if (
-            !roleName ||
-            !displayName ||
-            !roleNo ||
-            !companyId ||
-            !companyName ||
-            !Array.isArray(modules)
-        ) {
+        if (!roleName || !displayName || !roleNo || !companyId || !Array.isArray(modules)) {
             return reply.code(400).send({
                 success: false,
-                message: "Invalid request data",
+                message: "Invalid request data: Missing required fields",
             });
         }
 
-        const existing = await req.server.prisma.role.findFirst({
-            where: {
-                companyId,
-                OR: [{ roleName }, { roleNo }],
-            },
+        if (!companyName) {
+            const company = await req.server.prisma.company.findUnique({ where: { id: companyId }});
+            companyName = company?.company || "Unknown Company";
+        }
+
+        const existingName = await req.server.prisma.role.findFirst({
+            where: { companyId, roleName },
         });
 
-        if (existing) {
+        if (existingName) {
             return reply.code(409).send({
                 success: false,
-                message: "Role already exists",
+                message: "Role name already exists",
+            });
+        }
+
+        const existingNo = await req.server.prisma.role.findFirst({
+            where: { companyId, roleNo },
+        });
+
+        if (existingNo) {
+            return reply.code(409).send({
+                success: false,
+                message: "Role number already exists",
             });
         }
 
@@ -85,32 +91,35 @@ export async function updateRole(req, reply) {
         if (!role) {
             return reply.code(404).send({ success: false, message: "Role not found" });
         }
+        
+        let orConditions = [];
+        if (roleName) orConditions.push({ roleName });
+        if (roleNo !== undefined && roleNo !== null && !isNaN(roleNo)) orConditions.push({ roleNo });
 
-        // Prevent updating critical fields for system roles if necessary, 
-        // but here we just update as requested while checking for conflicts.
-
-        const existing = await req.server.prisma.role.findFirst({
-            where: {
-                companyId: role.companyId,
-                id: { not: id },
-                OR: [{ roleName }, { roleNo }],
-            },
-        });
-
-        if (existing) {
-            return reply.code(409).send({
-                success: false,
-                message: "A role with the same name or number already exists",
+        if (orConditions.length > 0) {
+            const existing = await req.server.prisma.role.findFirst({
+                where: {
+                    companyId: role.companyId,
+                    id: { not: id },
+                    OR: orConditions,
+                },
             });
+    
+            if (existing) {
+                return reply.code(409).send({
+                    success: false,
+                    message: "A role with the same name or number already exists",
+                });
+            }
         }
 
         const updatedRole = await req.server.prisma.role.update({
             where: { id },
             data: {
-                roleName,
-                displayName,
-                roleNo,
-                modules,
+                roleName: roleName !== undefined ? roleName : role.roleName,
+                displayName: displayName !== undefined ? displayName : role.displayName,
+                roleNo: (roleNo !== undefined && !isNaN(roleNo)) ? roleNo : role.roleNo,
+                modules: modules !== undefined ? modules : role.modules,
                 status: status || role.status,
             },
         });
@@ -142,12 +151,14 @@ export async function deleteRole(req, reply) {
             return reply.code(404).send({ success: false, message: "Role not found" });
         }
 
-        // Restrictions
-        const systemRoles = ["admin", "pro", "company", "accounts"];
-        if (systemRoles.includes(role.roleName.toLowerCase())) {
-            return reply.code(403).send({
-                success: false,
-                message: `Cannot delete system role: ${role.roleName}`,
+        // Prevent deletion if the role is assigned to any Admins or Users
+        const assignedAdminsCount = await req.server.prisma.admin.count({ where: { roleId: id } });
+        const assignedUsersCount = await req.server.prisma.user.count({ where: { roleId: id } });
+
+        if (assignedAdminsCount > 0 || assignedUsersCount > 0) {
+            return reply.code(409).send({ 
+                success: false, 
+                message: "Cannot delete this role because it is currently assigned to active staff." 
             });
         }
 

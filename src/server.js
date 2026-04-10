@@ -1,6 +1,7 @@
 import "dotenv/config"; // Force reload env
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
 import prismaPlugin from "./plugins/prisma.js";
 import userAuth from "./routes/auth.routes.js";
 import authRoutes from "./routes/auth.routes.js";
@@ -21,6 +22,9 @@ import videoRoutes from "./routes/video.routes.js";
 import showcaseRoutes from "./routes/showcase.routes.js";
 import portraitVideoRoutes from "./routes/portraitVideo.routes.js";
 import superadminRoutes from "./routes/superadmin.routes.js";
+import clientAdminRoutes from "./routes/clientAdmin.routes.js";
+import performanceRoutes from "./routes/performance.routes.js";
+import crmRoutes from "./routes/crm.routes.js";
 
 const app = Fastify({
   logger: true,
@@ -30,6 +34,12 @@ const app = Fastify({
 await app.register(cors, {
   origin: "*", // allow all origins
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+});
+
+await app.register(multipart, {
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB
+  }
 });
 
 // Prisma Set up
@@ -53,7 +63,9 @@ app.register(
 );
 
 app.register(superadminRoutes, { prefix: "/api/superadmin" });
-
+app.register(clientAdminRoutes, { prefix: "/api/client-admin" });
+app.register(performanceRoutes, { prefix: "/api/performance" });
+app.register(crmRoutes, { prefix: "/api/crm" });
 
 // Roles route
 app.register(rolesRoutes, { prefix: "/api/roles" });

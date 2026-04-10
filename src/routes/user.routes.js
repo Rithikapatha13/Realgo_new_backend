@@ -36,6 +36,43 @@ export default async function userRoutes(fastify) {
         }
     });
 
+    // Get potential parents (Admins + Users) for hierarchy selection
+    fastify.get("/potential-parents", async (req, reply) => {
+        try {
+            const { companyId } = req.user;
+            const [users, admins] = await Promise.all([
+                fastify.prisma.user.findMany({
+                    where: { companyId, status: 'VERIFIED' },
+                    select: { id: true, username: true, firstName: true, lastName: true },
+                    orderBy: { username: 'asc' }
+                }),
+                fastify.prisma.admin.findMany({
+                    where: { companyId, status: 'VERIFIED' },
+                    select: { id: true, username: true, firstName: true, lastName: true },
+                    orderBy: { username: 'asc' }
+                })
+            ]);
+
+            const combined = [
+                ...admins.map(a => ({ 
+                    id: a.id, 
+                    username: a.username || `${a.firstName || ''} ${a.lastName || ''}`.trim() || 'Unknown Admin',
+                    label: `(Admin) ${a.username || a.firstName || 'Admin'}`
+                })),
+                ...users.map(u => ({ 
+                    id: u.id, 
+                    username: u.username || `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Unknown User',
+                    label: u.username || u.firstName || 'User'
+                }))
+            ];
+
+            return reply.send({ success: true, data: { items: combined } });
+        } catch (err) {
+            req.log.error(err);
+            return reply.code(500).send({ success: false, message: "Internal server error" });
+        }
+    });
+
     // ==========================================
     // ASSOCIATES CRUD ENDPOINTS (For Admin/Pro)
     // ==========================================
@@ -119,7 +156,7 @@ export default async function userRoutes(fastify) {
 
             const user = await fastify.prisma.user.findFirst({
                 where: { id, companyId },
-                include: { role: true, referUser: { select: { username: true, id: true } } }
+                include: { role: true }
             });
 
             if (!user) {
@@ -157,24 +194,18 @@ export default async function userRoutes(fastify) {
                 country: body.country,
                 zipCode: body.zipCode,
                 status: body.status || "PENDING",
-                roleId: body.roleId || body.role, // Handle legacy 'role' key
+                roleId: body.roleId || body.role,
                 image: body.image || body.img,
-                referId: body.referId || body.refer_id,
+                referId: body.referId || body.refer_id || body.teamHeadId || body.team_head_id || null,
+                teamHeadId: body.referId || body.refer_id || body.teamHeadId || body.team_head_id || null,
                 companyId: companyId,
+                createdById: req.user.userId,
                 dob: body.dob ? new Date(body.dob) : null,
                 gender: body.gender,
                 bloodGroup: body.bloodGroup,
                 designation: body.designation,
-                // These are legacy fields handled indirectly or renamed above:
-                // team_head_id, userTitle, parentName, nomineeName, etc.
             };
 
-            // Calculate Team Head ID recursively if we were to strictly mimic legacy realgo,
-            // However, Prisma tree logic suggests team structure is calculated on-demand via referId.
-            // If explicit teamHeadId exists in DB, we'll assign it if passed:
-            if (body.teamHeadId || body.team_head_id) {
-                data.referId = body.teamHeadId || body.team_head_id; // Mapping to referId for simpler hierarchy
-            }
 
             if (body.password) {
                 data.password = await bcrypt.hash(body.password, saltRounds);

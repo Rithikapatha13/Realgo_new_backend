@@ -16,6 +16,7 @@
     "@aws-sdk/s3-request-presigner": "^3.971.0",
     "@fastify/cors": "^11.2.0",
     "@fastify/jwt": "^10.0.0",
+    "@fastify/multipart": "^10.0.0",
     "@prisma/client": "^5.22.0",
     "bcrypt": "^6.0.0",
     "crypto": "^1.0.1",
@@ -26,6 +27,7 @@
     "nodemon": "^3.1.11",
     "prisma": "^5.22.0",
     "sharp": "^0.34.5",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "xlsx": "^0.18.5"
   }
 }

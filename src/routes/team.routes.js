@@ -1,23 +1,6 @@
 import authMiddleware from '../middlewares/auth.middleware.js';
+import { getAllSubordinateIds } from '../utils/hierarchy.js';
 
-// ── Helper: recursively get all descendant user IDs ──────────────────────────
-async function getAllSubordinateIds(prisma, userId, status, companyId) {
-    const subs = await prisma.user.findMany({
-        where: {
-            referId: userId,
-            companyId,
-            ...(status ? { status } : {})
-        },
-        select: { id: true }
-    });
-
-    let ids = subs.map(s => s.id);
-    for (const sub of subs) {
-        const childIds = await getAllSubordinateIds(prisma, sub.id, status, companyId);
-        ids = ids.concat(childIds);
-    }
-    return ids;
-}
 
 // ── Route plugin ──────────────────────────────────────────────────────────────
 export default async function teamRoutes(fastify) {
@@ -34,17 +17,31 @@ export default async function teamRoutes(fastify) {
             const roleName = typeof request.user.role === 'string'
                 ? request.user.role
                 : request.user.role?.roleName;
+            const roleNo = request.user.roleNo ?? 999;
+            const userType = request.user.userType?.toLowerCase();
 
-            const isAdmin =
-                request.user.userType?.toLowerCase() === 'admin' ||
-                roleName?.toLowerCase() === 'admin';
+            const isPowerRole =
+                userType === 'clientadmin' ||
+                roleName?.toLowerCase() === 'admin' ||
+                roleNo <= 4;
 
-            console.log(`[DEBUG] isAdmin=${isAdmin}, roleName=${roleName}`);
+            let userId = id || request.user.userId;
+            let whereClause = { companyId };
+
+            if (isPowerRole && !id) {
+                console.log(`[DEBUG] Power Role detected in /my-team without ID, showing all company users...`);
+                // No additional filtering needed, whereClause already has companyId
+            } else {
+                // Get all subordinates recursively starting from userId
+                const allSubordinateIds = await getAllSubordinateIds(prisma, userId, companyId, status);
+                console.log(`[DEBUG] Found ${allSubordinateIds.length} subordinates for user ${userId}`);
+                whereClause.id = { in: [...allSubordinateIds, userId] }; // Include self
+            }
 
             let startId = id || request.user.userId;
 
             // If Admin and no specific ID requested, start from the 'company' root user
-            if (isAdmin && !id) {
+            if (isPowerRole && !id) {
                 console.log(`[DEBUG] Admin detected without ID, searching for 'company' root user...`);
                 const companyUser = await prisma.user.findFirst({
                     where: { username: 'company', companyId }
@@ -172,37 +169,26 @@ export default async function teamRoutes(fastify) {
             const roleName = typeof request.user.role === 'string'
                 ? request.user.role
                 : request.user.role?.roleName;
+            const roleNo = request.user.roleNo ?? 999;
+            const userType = request.user.userType?.toLowerCase();
 
-            const isAdmin =
-                request.user.userType?.toLowerCase() === 'admin' ||
-                roleName?.toLowerCase() === 'admin';
+            const isPowerRole =
+                userType === 'clientadmin' ||
+                roleName?.toLowerCase() === 'admin' ||
+                roleNo <= 4;
 
             let userId = id || request.user.userId;
+            let whereClause = { companyId };
 
-            // If Admin and no specific ID requested, start from root user
-            if (isAdmin && !id) {
-                console.log(`[DEBUG] Admin detected in /my-team without ID, searching for root user...`);
-                const companyUser = await prisma.user.findFirst({
-                    where: { username: 'company', companyId }
-                });
-                if (companyUser) {
-                    userId = companyUser.id;
-                    console.log(`[DEBUG] Using root user ID: ${userId}`);
-                }
+            if (isPowerRole && !id) {
+                console.log(`[DEBUG] Power Role detected in /my-team without ID, showing all company users...`);
+                // No additional filtering needed, whereClause already has companyId
+            } else {
+                // Get all subordinates recursively starting from userId
+                const allSubordinateIds = await getAllSubordinateIds(prisma, userId, status, companyId);
+                console.log(`[DEBUG] Found ${allSubordinateIds.length} subordinates for user ${userId}`);
+                whereClause.id = { in: allSubordinateIds };
             }
-
-            // Get all subordinates recursively
-            const allSubordinateIds = await getAllSubordinateIds(prisma, userId, status, companyId);
-
-            console.log(`[DEBUG] Found ${allSubordinateIds.length} subordinates for user ${userId}`);
-
-            const skip = (parseInt(page) - 1) * parseInt(size);
-            const take = parseInt(size);
-
-            const whereClause = {
-                id: { in: allSubordinateIds },
-                companyId,
-            };
 
             if (status) whereClause.status = status;
 

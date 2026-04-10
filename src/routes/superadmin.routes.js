@@ -1,5 +1,8 @@
 import authMiddleware from "../middlewares/auth.middleware.js";
 import { v4 as uuid } from "uuid";
+import bcrypt from "bcrypt";
+
+const saltRounds = 10;
 
 export default async function superadminRoutes(fastify) {
     const { prisma } = fastify;
@@ -132,9 +135,11 @@ export default async function superadminRoutes(fastify) {
                 }
             }
 
+            const companyId = uuid();
+
             const company = await prisma.company.create({
                 data: {
-                    id: uuid(),
+                    id: companyId,
                     company: body.company,
                     address: body.address,
                     img: body.img,
@@ -146,7 +151,53 @@ export default async function superadminRoutes(fastify) {
                 }
             });
 
-            return reply.send({ success: true, message: "Company created successfully", data: company });
+            // Automatically Generate Mandatory Role: COMPANY_ADMIN
+            const companyAdminRoleId = uuid();
+            const role = { 
+                id: companyAdminRoleId, 
+                roleName: "COMPANY_ADMIN", 
+                displayName: "Company Admin", 
+                roleNo: 1, 
+                modules: body.modules || [], 
+                status: "ACTIVE", 
+                companyId, 
+                companyName: company.company 
+            };
+            
+            await prisma.role.create({
+                data: role
+            });
+
+            // Automatically Create Primary Company Admin User in ClientAdmin table
+            const hashedPassword = await bcrypt.hash("Realgo@123", saltRounds);
+            await prisma.clientAdmin.create({
+                data: {
+                    id: uuid(),
+                    username: `admin_${body.phone || '0000'}`,
+                    firstName: body.ownerFirstName || "Company",
+                    lastName: body.ownerLastName || "Admin",
+                    phone: body.phone || '0000000000',
+                    email: body.email,
+                    password: hashedPassword,
+                    status: "VERIFIED",
+                    companyId: companyId,
+                    passwordChanged: false,
+                    
+                    // -- New Full Info Fields --
+                    fatherOrHusband: body.ownerFatherOrHusband,
+                    gender: body.ownerGender,
+                    bloodGroup: body.ownerBloodGroup,
+                    dob: body.ownerDob ? new Date(body.ownerDob) : null,
+                    aadharNo: body.ownerAadharNo,
+                    panNo: body.ownerPanNo,
+                    bankName: body.ownerBankName,
+                    bankAccountNo: body.ownerBankAccountNo,
+                    ifsc: body.ownerIfsc,
+                    branch: body.ownerBranch,
+                }
+            });
+
+            return reply.send({ success: true, message: "Company and Company Admin created successfully", data: company });
         } catch (err) {
             fastify.log.error(err);
             return reply.code(500).send({ success: false, message: "Internal server error" });
@@ -158,7 +209,13 @@ export default async function superadminRoutes(fastify) {
         try {
             const { id } = req.params;
             const company = await prisma.company.findUnique({
-                where: { id }
+                where: { id },
+                include: {
+                    clientAdmins: {
+                        take: 1, // Get the primary admin
+                        orderBy: { createdAt: "asc" }
+                    }
+                }
             });
 
             if (!company) {
@@ -199,6 +256,71 @@ export default async function superadminRoutes(fastify) {
                     modules: body.modules,
                 }
             });
+
+            // Handle ClientAdmin - If owner details are provided, either update existing or create new
+            if (body.ownerFirstName || body.ownerPhone || body.ownerEmail) {
+                const existingAdmin = await prisma.clientAdmin.findFirst({
+                    where: { companyId: id }
+                });
+
+                const adminData = {
+                    firstName: body.ownerFirstName || "Company",
+                    lastName: body.ownerLastName || "Admin",
+                    phone: body.ownerPhone || body.phone,
+                    email: body.ownerEmail || body.email,
+                    fatherOrHusband: body.ownerFatherOrHusband || null,
+                    gender: body.ownerGender || null,
+                    bloodGroup: body.ownerBloodGroup || null,
+                    dob: (body.ownerDob && body.ownerDob !== "") ? new Date(body.ownerDob) : null,
+                    aadharNo: body.ownerAadharNo || null,
+                    panNo: body.ownerPanNo || null,
+                    bankName: body.ownerBankName || null,
+                    bankAccountNo: body.ownerBankAccountNo || null,
+                    ifsc: body.ownerIfsc || null,
+                    branch: body.ownerBranch || null,
+                };
+
+                if (existingAdmin) {
+                    await prisma.clientAdmin.update({
+                        where: { id: existingAdmin.id },
+                        data: adminData
+                    });
+                } else {
+                    const hashedPassword = await bcrypt.hash("Realgo@123", saltRounds);
+                    
+                    // Also ensure COMPANY_ADMIN role exists for this company
+                    let role = await prisma.role.findFirst({
+                        where: { companyId: id, roleName: "COMPANY_ADMIN" }
+                    });
+
+                    if (!role) {
+                        role = await prisma.role.create({
+                            data: {
+                                id: uuid(),
+                                roleName: "COMPANY_ADMIN",
+                                displayName: "Company Admin",
+                                roleNo: 1,
+                                modules: body.modules || [],
+                                status: "ACTIVE",
+                                companyId: id,
+                                companyName: company.company
+                            }
+                        });
+                    }
+
+                    await prisma.clientAdmin.create({
+                        data: {
+                            id: uuid(),
+                            username: `admin_${body.ownerPhone || body.phone || '0000'}`,
+                            password: hashedPassword,
+                            status: "VERIFIED",
+                            companyId: id,
+                            passwordChanged: false,
+                            ...adminData
+                        }
+                    });
+                }
+            }
 
             return reply.send({ success: true, message: "Company updated successfully", data: company });
         } catch (err) {

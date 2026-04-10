@@ -41,17 +41,52 @@ export default async function commonRoutes(fastify) {
 
   fastify.post("/update-profile", async (req, res) => {
     try {
-      const { id, username, email, image, isAdmin } = req.body;
+      const { id, username, email, image, userType, isAdmin, ...details } = req.body;
+      const type = (userType || (isAdmin ? "admin" : "user")).toLowerCase();
 
-      if (isAdmin) {
+      const updateData = {
+        username,
+        email,
+        image,
+        fatherOrHusband: details.fatherOrHusband,
+        gender: details.gender,
+        bloodGroup: details.bloodGroup,
+        dob: details.dob ? new Date(details.dob) : undefined,
+        aadharNo: details.aadharNo,
+        panNo: details.panNo,
+        bankName: details.bankName,
+        bankAccountNo: details.bankAccountNo,
+        ifsc: details.ifsc,
+        branch: details.branch,
+        accountHolder: details.accountHolder,
+        nomineeName: details.nomineeName,
+        nomineePhone: details.nomineePhone,
+        nomineeRelation: details.nomineeRelation,
+        city: details.city,
+        state: details.state,
+        pinCode: details.pinCode || details.zipCode,
+        country: details.country,
+      };
+
+      if (type === "clientadmin") {
+        await fastify.prisma.clientAdmin.update({
+          where: { id },
+          data: updateData,
+        });
+      } else if (type === "admin") {
         await fastify.prisma.admin.update({
+          where: { id },
+          data: updateData,
+        });
+      } else if (type === "superadmin") {
+        await fastify.prisma.superAdmin.update({
           where: { id },
           data: { username, email, image },
         });
       } else {
         await fastify.prisma.user.update({
           where: { id },
-          data: { username, email, image },
+          data: updateData,
         });
       }
 
@@ -61,7 +96,7 @@ export default async function commonRoutes(fastify) {
       });
     } catch (error) {
       console.log(error);
-      return res.code(500).send({ success: false, error });
+      return res.code(500).send({ success: false, error: error.message || error });
     }
   });
 

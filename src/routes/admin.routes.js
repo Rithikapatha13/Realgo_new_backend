@@ -81,7 +81,30 @@ export default async function adminRoutes(fastify) {
                     status: body.status || "PENDING",
                     companyId: companyId,
                     roleId: body.roleId,
-                    passwordChanged: false
+                    passwordChanged: false,
+                    
+                    // -- New Full Info Fields --
+                    fatherOrHusband: body.fatherOrHusband,
+                    gender: body.gender || null,
+                    bloodGroup: body.bloodGroup || null,
+                    dob: (body.dob && !isNaN(new Date(body.dob).getTime())) ? new Date(body.dob) : null,
+                    aadharNo: body.aadharNo,
+                    panNo: body.panNo,
+                    bankName: body.bankName,
+                    branch: body.branch,
+                    accountHolder: body.accountHolder,
+                    bankAccountNo: body.bankAccountNo,
+                    ifsc: body.ifsc,
+                    nomineeName: body.nomineeName,
+                    nomineePhone: body.nomineePhone,
+                    nomineeRelation: body.nomineeRelation,
+                    city: body.city,
+                    state: body.state,
+                    zipCode: body.zipCode,
+                    country: body.country,
+                    
+                    // -- Leadership --
+                    isModuleHead: body.isModuleHead === true || body.isModuleHead === "true"
                 }
             });
 
@@ -127,6 +150,29 @@ export default async function adminRoutes(fastify) {
                 image: data.img || data.image,
                 alternativePhone: data.alternativePhone,
                 roleId: data.roleId,
+                
+                // -- New Full Info Fields --
+                fatherOrHusband: data.fatherOrHusband,
+                gender: data.gender || null,
+                bloodGroup: data.bloodGroup || null,
+                dob: (data.dob && !isNaN(new Date(data.dob).getTime())) ? new Date(data.dob) : null,
+                aadharNo: data.aadharNo,
+                panNo: data.panNo,
+                bankName: data.bankName,
+                branch: data.branch,
+                accountHolder: data.accountHolder,
+                bankAccountNo: data.bankAccountNo,
+                ifsc: data.ifsc,
+                nomineeName: data.nomineeName,
+                nomineePhone: data.nomineePhone,
+                nomineeRelation: data.nomineeRelation,
+                city: data.city,
+                state: data.state,
+                zipCode: data.zipCode,
+                country: data.country,
+                
+                // -- Leadership --
+                isModuleHead: data.isModuleHead === true || data.isModuleHead === "true"
             };
 
             if (data.password) {

@@ -28,7 +28,28 @@ export default async function authRoutes(fastify) {
         });
       }
 
-      // Admin
+      // Client Admin (Owner)
+      const clientAdmin = await fastify.prisma.clientAdmin.findMany({
+        where: { phone },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          company: {
+            select: {
+              id: true,
+              company: true,
+              img: true,
+            },
+          },
+        },
+      });
+
+      if (clientAdmin.length > 0) {
+        return res.code(200).send({ companies: clientAdmin, role: "clientadmin" });
+      }
+
+      // Admin (Staff/Leaders)
       const admin = await fastify.prisma.admin.findMany({
         where: { phone },
         select: {
@@ -123,7 +144,7 @@ export default async function authRoutes(fastify) {
           });
         }
 
-        authUser = await fastify.prisma.admin.findFirst({
+        authUser = await fastify.prisma.clientAdmin.findFirst({
           where: { phone, companyId },
           include: {
             company: {
@@ -134,17 +155,42 @@ export default async function authRoutes(fastify) {
                 secondaryColour: true,
               },
             },
-            role: {
-              select: {
-                roleName: true,
-              },
-            },
           },
         });
 
         if (authUser) {
-          userType = "admin";
+          userType = "clientadmin";
+          authUser.role = { 
+            roleName: "COMPANY_ADMIN",
+            modules: ["ALL"], // ClientAdmin gets all modules
+            roleNo: 0 
+          }; // Map virtual role
         } else {
+          authUser = await fastify.prisma.admin.findFirst({
+            where: { phone, companyId },
+            include: {
+              company: {
+                select: {
+                  img: true,
+                  company: true,
+                  primaryColour: true,
+                  secondaryColour: true,
+                },
+              },
+              role: {
+                select: {
+                  roleName: true,
+                  modules: true,
+                  roleNo: true,
+                },
+              },
+            },
+          });
+        }
+
+        if (authUser && !userType) {
+          userType = "admin";
+        } else if (!authUser) {
           authUser = await fastify.prisma.user.findFirst({
             where: { phone, companyId },
             include: {
@@ -159,6 +205,8 @@ export default async function authRoutes(fastify) {
               role: {
                 select: {
                   roleName: true,
+                  modules: true,
+                  roleNo: true,
                 },
               },
             },
@@ -220,7 +268,11 @@ export default async function authRoutes(fastify) {
       };
 
       if (companyId) tokenPayload.companyId = companyId;
-      if (authUser.role) tokenPayload.role = authUser.role;
+      if (authUser.role) {
+        tokenPayload.role = authUser.role;
+        tokenPayload.roleNo = authUser.role.roleNo;
+        tokenPayload.roleModules = authUser.role.modules;
+      }
 
       const user = {
         id: authUser.id,
@@ -236,6 +288,8 @@ export default async function authRoutes(fastify) {
         teamHeadId: authUser.teamHeadId,
         role: authUser.roleName || authUser.role?.roleName,
         roleId: authUser.roleId,
+        roleModules: authUser.role?.modules || [],
+        roleNo: authUser.role?.roleNo || (userType === 'clientadmin' ? 0 : 999),
         userName: authUser.username,
         companyImg: authUser.company?.img,
         primaryColour: authUser.company?.primaryColour,
@@ -265,7 +319,7 @@ export default async function authRoutes(fastify) {
   // CHANGE PASSWORD
   // =====================================================
   fastify.post("/change-password", async (req, res) => {
-    const { phone, companyId, newPassword } = req.body;
+    const { phone, companyId, oldPassword, newPassword } = req.body;
 
     if (!phone || !companyId || !newPassword) {
       return res.code(400).send({
@@ -283,6 +337,14 @@ export default async function authRoutes(fastify) {
       });
 
       if (admin) {
+        // If old password provided, verify it first
+        if (oldPassword) {
+          const isOldPasswordValid = await comparePassword(oldPassword, admin.password);
+          if (!isOldPasswordValid) {
+            return res.code(401).send({ success: false, message: "Current password is incorrect" });
+          }
+        }
+
         const hashedPassword = await hashPassword(newPassword);
 
         await fastify.prisma.admin.update({
@@ -295,8 +357,40 @@ export default async function authRoutes(fastify) {
 
         return res.send({
           success: true,
-          message: "Admin password changed successfully",
+          message: "Password changed successfully! Please login with your new password.",
           role: "admin",
+        });
+      }
+
+      /* =========================
+       1.5 CHECK CLIENT ADMIN
+    ========================== */
+      const clientAdmin = await fastify.prisma.clientAdmin.findFirst({
+        where: { phone, companyId },
+      });
+
+      if (clientAdmin) {
+        if (oldPassword) {
+          const isOldPasswordValid = await comparePassword(oldPassword, clientAdmin.password);
+          if (!isOldPasswordValid) {
+            return res.code(401).send({ success: false, message: "Current password is incorrect" });
+          }
+        }
+
+        const hashedPassword = await hashPassword(newPassword);
+
+        await fastify.prisma.clientAdmin.update({
+          where: { id: clientAdmin.id },
+          data: {
+            password: hashedPassword,
+            passwordChanged: true,
+          },
+        });
+
+        return res.send({
+          success: true,
+          message: "Password changed successfully! Please login with your new password.",
+          role: "clientadmin",
         });
       }
 
@@ -314,6 +408,14 @@ export default async function authRoutes(fastify) {
         });
       }
 
+      // If old password provided, verify it first
+      if (oldPassword) {
+        const isOldPasswordValid = await comparePassword(oldPassword, user.password);
+        if (!isOldPasswordValid) {
+          return res.code(401).send({ success: false, message: "Current password is incorrect" });
+        }
+      }
+
       const hashedPassword = await hashPassword(newPassword);
 
       await fastify.prisma.user.update({
@@ -326,7 +428,7 @@ export default async function authRoutes(fastify) {
 
       return res.send({
         success: true,
-        message: "User password changed successfully",
+        message: "Password changed successfully! Please login with your new password.",
         role: "user",
       });
     } catch (error) {

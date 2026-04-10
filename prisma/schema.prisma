@@ -106,8 +106,71 @@ model Admin {
   lastName         String?
   passwordChanged  Boolean     @default(false)
   roleId           String
+  
+  // -- Full Info Fields --
+  fatherOrHusband  String?
+  gender           Gender?
+  bloodGroup       BloodGroup?
+  dob              DateTime?
+  aadharNo         String?
+  panNo            String?
+  bankName         String?
+  branch           String?
+  accountHolder    String?
+  bankAccountNo    String?
+  ifsc             String?
+  nomineeName      String?
+  nomineePhone     String?
+  nomineeRelation  String?
+  city             String?
+  state            String?
+  zipCode          String?
+  country          String?
+  
+  // -- Modular Leadership --
+  isModuleHead     Boolean     @default(false)
+
   company          Company     @relation(fields: [companyId], references: [id])
   role             Role        @relation(fields: [roleId], references: [id])
+}
+
+model ClientAdmin {
+  id                String             @id @default(uuid())
+  username          String
+  firstName         String
+  lastName          String?
+  fatherOrHusband   String?
+  gender            Gender?
+  bloodGroup        BloodGroup?
+  image             String?
+  dob               DateTime?
+  phone             String
+  email             String
+  password          String
+  aadharNo          String?
+  panNo             String?
+  nomineeName       String?
+  nomineePhone      String?
+  nomineeRelation   String?
+  addressLine       String?
+  city              String?
+  state             String?
+  pinCode           String?
+  country           String?
+  bankName          String?
+  branch            String?
+  accountHolder     String?
+  bankAccountNo     String?
+  ifsc              String?
+  companyId         String
+  status            AdminStatus        @default(PENDING)
+  passwordChanged   Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  company           Company            @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+  @@index([email])
 }
 
 model Company {
@@ -144,6 +207,7 @@ model Company {
   roles              Role[]
   showcases          Showcase[]
   users              User[]
+  clientAdmins       ClientAdmin[]
   admins             Admin[]
   videos             Video[]
   accountTrees       AccountTree[]

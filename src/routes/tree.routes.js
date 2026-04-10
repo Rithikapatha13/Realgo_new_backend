@@ -132,7 +132,7 @@ export async function teamTreeRoutes(fastify) {
                 childs: []
             });
 
-            // Helper to find main user across user and admin tables
+            // Helper to find main user across user, admin, and clientAdmin tables
             const findMainUser = async (uId) => {
                 let u = await fastify.prisma.user.findUnique({
                     where: { id: uId },
@@ -146,70 +146,97 @@ export async function teamTreeRoutes(fastify) {
                 });
                 if (u) return formatUserNode(u);
 
+                u = await fastify.prisma.clientAdmin.findUnique({
+                    where: { id: uId },
+                    include: { company: true }
+                });
+                if (u) {
+                    const node = formatUserNode(u);
+                    node.title = "Company Admin";
+                    return node;
+                }
+
                 return null;
             };
 
-            const isAdmin = request.user.role?.roleName?.toUpperCase() === 'ADMIN' || request.user.role_name?.toUpperCase() === 'ADMIN';
+            const roleName = (request.user.role?.roleName || request.user.role_name || "").toUpperCase();
+            const roleNo = request.user.roleNo ?? 999;
+            const isAdmin = roleName === 'ADMIN' || roleName === 'COMPANY_ADMIN' || roleName === 'SUPERADMIN' || roleNo <= 4;
 
             if (isAdmin) {
                 let associateId = id ? id : request.user.userId;
 
-                // 1. Fetch the root node (Admin or User)
+                // 1. Fetch the root node
                 const mainUserNode = await findMainUser(associateId);
                 if (mainUserNode) {
-                    // Fix Naming: If it's the logged-in Admin and name is 'admin', try to use a better name
-                    const rawAdmin = await fastify.prisma.admin.findUnique({ where: { id: associateId } });
-                    if (rawAdmin) {
-                        const fullName = `${rawAdmin.firstName || ''} ${rawAdmin.lastName || ''}`.trim();
-                        if (fullName) mainUserNode.name = fullName;
-                    }
                     root.push(mainUserNode);
+                } else {
+                    // Fallback to minimal root if not found
+                    root.push({ id: associateId, name: "Company Root", childs: [] });
                 }
 
-                // 2. Fetch all users in company
-                const allUsersInCompany = await fastify.prisma.user.findMany({
-                    where: { companyId, status: status || 'VERIFIED' },
-                    include: { role: true }
-                });
+                // 2. Fetch all users AND admins in company
+                const [allUsersInCompany, allAdminsInCompany] = await Promise.all([
+                    fastify.prisma.user.findMany({
+                        where: { companyId, status: status || 'VERIFIED' },
+                        include: { role: true }
+                    }),
+                    fastify.prisma.admin.findMany({
+                        where: { companyId, status: status || 'VERIFIED' },
+                        include: { role: true }
+                    })
+                ]);
 
-                // 3. Build Node Map and child relationship
+                // 3. Build Node Map
                 const nodesMap = { [associateId]: root[0] };
+                
+                const adminNodes = allAdminsInCompany.map(formatUserNode);
                 const userNodes = allUsersInCompany.map(formatUserNode);
-                userNodes.forEach(node => {
-                    if (node.id !== associateId) nodesMap[node.id] = node;
-                });
 
-                // 4. Attach children
+                adminNodes.forEach(node => { if (node.id !== associateId) nodesMap[node.id] = node; });
+                userNodes.forEach(node => { if (node.id !== associateId) nodesMap[node.id] = node; });
+
+                // 4. Attach admins to root (Admins/Leaders are usually direct reports to Company Admin)
+                for (const node of adminNodes) {
+                    if (node.id === associateId) continue;
+                    if (root[0]) root[0].childs.push(node);
+                }
+
+                // 5. Attach users to their parents (could be another user or an admin)
                 for (const node of userNodes) {
                     if (node.id === associateId) continue;
 
-                    // If parent is the current root (Admin), attach directly
-                    // Or if parent is another user in our map, attach to them
                     const parentId = node.refer_id;
                     if (parentId === associateId) {
                         if (root[0]) root[0].childs.push(node);
                     } else if (parentId && nodesMap[parentId]) {
                         nodesMap[parentId].childs.push(node);
-                    } else {
-                        // ORPHAN/ROOT USER: Attach to Admin if we are at the top-level Admin view
-                        if (!id && root[0]) {
-                            root[0].childs.push(node);
-                        }
+                    } else if (!id && root[0]) {
+                        // Orphan users at top level
+                        root[0].childs.push(node);
                     }
                 }
             } else {
-                let defaultId = request.user.userId; // user id inside token
-                let associateId = id ? id : defaultId;
+                // For non-admins (e.g. associates with roleNo > 0)
+                // We want the tree to start from their LEADER (teamHeadId)
+                // so they can see themselves AND their peers on the same row.
+                
+                const loggedInUserRecord = await fastify.prisma.user.findUnique({
+                    where: { id: request.user.userId },
+                    select: { teamHeadId: true, referId: true }
+                });
+
+                const leaderId = loggedInUserRecord?.teamHeadId || loggedInUserRecord?.referId;
+                let associateId = id ? id : (leaderId || request.user.userId);
 
                 const mainUserNode = await findMainUser(associateId);
-
                 if (mainUserNode) {
                     root.push(mainUserNode);
                 }
 
-                // Get flat users
+                // Get flat users in the same company
                 const flatUsers = await fastify.prisma.user.findMany({
-                    where: { status: status || 'VERIFIED' },
+                    where: { companyId, status: status || 'VERIFIED' },
                     include: { role: true }
                 });
 
@@ -239,7 +266,8 @@ export async function teamTreeRoutes(fastify) {
 
             const sortTreeByRole = (nodes) => {
                 if (!nodes) return [];
-                return nodes
+                const nodeList = Array.isArray(nodes) ? nodes : [nodes];
+                return nodeList
                     .map((node) => {
                         if (node.childs && node.childs.length > 0) {
                             node.childs = sortTreeByRole(node.childs);
@@ -247,12 +275,15 @@ export async function teamTreeRoutes(fastify) {
                         return node;
                     })
                     .sort((a, b) => {
-                        const roleA = roleMap.get(a.role)?.roleNo || 0;
-                        const roleB = roleMap.get(b.role)?.roleNo || 0;
+                        const roleA = roleMap.get(a.role)?.roleNo || 999;
+                        const roleB = roleMap.get(b.role)?.roleNo || 999;
                         return roleA - roleB;
                     });
             };
-            root = sortTreeByRole(root);
+            
+            if (root.length > 0) {
+                root = sortTreeByRole(root);
+            }
 
             if (role) {
                 const filterTreeByRole = (nodes) => {
@@ -271,7 +302,8 @@ export async function teamTreeRoutes(fastify) {
 
             const countNodeAndDescendants = (nodes) => {
                 if (!nodes) return 0;
-                return nodes.reduce(
+                const nodeList = Array.isArray(nodes) ? nodes : [nodes];
+                return nodeList.reduce(
                     (count, node) => count + 1 + (node.childs ? countNodeAndDescendants(node.childs) : 0),
                     0
                 );
