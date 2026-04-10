@@ -140,6 +140,95 @@ export async function financeRoutes(fastify) {
         }
     });
 
+    // ================= BANKS =================
+
+    // GET /api/finance/banks
+    fastify.get("/banks", async (req, reply) => {
+        try {
+            const { companyId } = req.user;
+            const banks = await prisma.bank.findMany({
+                where: { companyId }
+            });
+            return reply.send({ success: true, items: banks });
+        } catch (err) {
+            fastify.log.error(err);
+            return reply.code(500).send({ success: false, message: "Error fetching banks" });
+        }
+    });
+
+    // POST /api/finance/add-bank
+    fastify.post("/add-bank", async (req, reply) => {
+        try {
+            const { companyId } = req.user;
+            const body = req.body;
+            const bank = await prisma.bank.create({
+                data: {
+                    id: uuid(),
+                    name: body.name,
+                    accountNumber: body.accountNumber,
+                    ifscCode: body.ifscCode,
+                    branch: body.branch,
+                    companyId: companyId
+                }
+            });
+            return reply.send({ success: true, message: "Bank added", data: bank });
+        } catch (err) {
+            fastify.log.error(err);
+            return reply.code(500).send({ success: false, message: "Error adding bank" });
+        }
+    });
+
+    // ================= CHEQUE SERIES =================
+
+    // GET /api/finance/cheque-series
+    fastify.get("/cheque-series", async (req, reply) => {
+        try {
+            const { companyId } = req.user;
+            const series = await prisma.chequeSeries.findMany({
+                where: { companyId }
+            });
+            return reply.send({ success: true, items: series });
+        } catch (err) {
+            fastify.log.error(err);
+            return reply.code(500).send({ success: false, message: "Error fetching cheque series" });
+        }
+    });
+
+    // POST /api/finance/add-cheque-series
+    fastify.post("/add-cheque-series", async (req, reply) => {
+        try {
+            const { companyId } = req.user;
+            const { startNumber, endNumber, bankId } = req.body;
+
+            if (!startNumber || !endNumber || !bankId) {
+                return reply.code(400).send({ 
+                    success: false, 
+                    message: "Missing required fields: startNumber, endNumber, and bankId are mandatory." 
+                });
+            }
+
+            const series = await prisma.chequeSeries.create({
+                data: {
+                    id: uuid(),
+                    startNumber: String(startNumber),
+                    endNumber: String(endNumber),
+                    currentNumber: String(startNumber),
+                    bankId: bankId,
+                    companyId: companyId,
+                    status: "ACTIVE"
+                }
+            });
+            return reply.send({ success: true, message: "Cheque series added successfully", data: series });
+        } catch (err) {
+            fastify.log.error(err);
+            return reply.code(500).send({ 
+                success: false, 
+                message: "Error adding cheque series. Ensure the Bank ID is valid.",
+                error: err.message
+            });
+        }
+    });
+
     // ================= PARTIES =================
 
     // GET /api/finance/parties - Fetch all parties (Vendors, Customers, etc.)
@@ -293,6 +382,220 @@ export async function financeRoutes(fastify) {
         } catch (err) {
             fastify.log.error(err);
             return reply.code(500).send({ success: false, message: "Error creating transaction" });
+        }
+    });
+
+    // POST /api/finance/receipt - Specialized General Receipt
+    fastify.post("/receipt", async (req, reply) => {
+        try {
+            const { companyId, id: userId } = req.user;
+            const { entries, modeDetails, ...transactionData } = req.body;
+
+            // Basic validation
+            if (!entries || entries.length < 2) {
+                return reply.code(400).send({ success: false, message: "At least two entries are required" });
+            }
+
+            const result = await prisma.$transaction(async (tx) => {
+                const transaction = await tx.transaction.create({
+                    data: {
+                        id: uuid(),
+                        transactionType: 'RECEIPT',
+                        transactionDate: new Date(transactionData.transactionDate || new Date()),
+                        referenceNumber: transactionData.referenceNumber,
+                        narration: transactionData.narration,
+                        totalAmount: transactionData.totalAmount,
+                        companyId: companyId,
+                        createdById: userId,
+                        partyId: transactionData.partyId,
+                        projectId: transactionData.projectId
+                    }
+                });
+
+                await tx.transactionEntry.createMany({
+                    data: entries.map(entry => ({
+                        id: uuid(),
+                        transactionId: transaction.id,
+                        ledgerId: entry.ledgerId,
+                        subledgerId: entry.subledgerId || null,
+                        amount: parseFloat(entry.amount),
+                        entryType: entry.entryType,
+                        narration: entry.narration,
+                        companyId: companyId
+                    }))
+                });
+
+                if (modeDetails && modeDetails.length > 0) {
+                    for (const mode of modeDetails) {
+                        const mDetail = await tx.transactionModeDetail.create({
+                            data: {
+                                id: uuid(),
+                                transactionId: transaction.id,
+                                type: 'RECEIVED',
+                                mode: mode.mode,
+                                amount: parseFloat(mode.amount),
+                                bankName: mode.bankName,
+                                companyBankId: mode.companyBankId,
+                                chequeNumber: mode.chequeNumber,
+                                chequeDate: mode.chequeDate ? new Date(mode.chequeDate) : null,
+                                upiId: mode.upiId,
+                                referenceNumber: mode.referenceNumber,
+                                transactionDate: new Date(transactionData.transactionDate || new Date()),
+                                companyId: companyId,
+                                createdById: userId
+                            }
+                        });
+
+                        if (mode.mode === 'CHEQUE') {
+                            await tx.chequeDetail.create({
+                                data: {
+                                    id: uuid(),
+                                    transactionId: transaction.id,
+                                    transactionModeDetailId: mDetail.id,
+                                    status: 'RECEIVED',
+                                    chequeType: 'RECEIVED',
+                                    chequeNumber: mode.chequeNumber,
+                                    companyId: companyId,
+                                    createdById: userId
+                                }
+                            });
+                        }
+                    }
+                }
+
+                await tx.financeLog.create({
+                    data: {
+                        id: uuid(),
+                        action: 'CREATE',
+                        module: 'GENERAL_RECEIPT',
+                        recordId: transaction.id,
+                        userId: userId,
+                        username: req.user.username,
+                        companyId: companyId,
+                        description: `Created receipt ${transaction.referenceNumber || transaction.id}`
+                    }
+                });
+
+                return transaction;
+            });
+
+            return reply.send({ success: true, message: "Receipt created successfully", data: result });
+        } catch (err) {
+            fastify.log.error(err);
+            return reply.code(500).send({ success: false, message: "Error creating receipt" });
+        }
+    });
+
+    // POST /api/finance/payment - Specialized Payment Voucher
+    fastify.post("/payment", async (req, reply) => {
+        try {
+            const { companyId, id: userId } = req.user;
+            const { entries, modeDetails, ...transactionData } = req.body;
+
+            const result = await prisma.$transaction(async (tx) => {
+                const transaction = await tx.transaction.create({
+                    data: {
+                        id: uuid(),
+                        transactionType: 'PAYMENT',
+                        transactionDate: new Date(transactionData.transactionDate || new Date()),
+                        referenceNumber: transactionData.referenceNumber,
+                        narration: transactionData.narration,
+                        totalAmount: transactionData.totalAmount,
+                        companyId: companyId,
+                        createdById: userId,
+                        partyId: transactionData.partyId,
+                        projectId: transactionData.projectId
+                    }
+                });
+
+                await tx.transactionEntry.createMany({
+                    data: entries.map(entry => ({
+                        id: uuid(),
+                        transactionId: transaction.id,
+                        ledgerId: entry.ledgerId,
+                        subledgerId: entry.subledgerId || null,
+                        amount: parseFloat(entry.amount),
+                        entryType: entry.entryType,
+                        narration: entry.narration,
+                        companyId: companyId
+                    }))
+                });
+
+                if (modeDetails && modeDetails.length > 0) {
+                    for (const mode of modeDetails) {
+                        const mDetail = await tx.transactionModeDetail.create({
+                            data: {
+                                id: uuid(),
+                                transactionId: transaction.id,
+                                type: 'ISSUED',
+                                mode: mode.mode,
+                                amount: parseFloat(mode.amount),
+                                companyBankId: mode.companyBankId,
+                                chequeNumber: mode.chequeNumber,
+                                chequeDate: mode.chequeDate ? new Date(mode.chequeDate) : null,
+                                transactionDate: new Date(transactionData.transactionDate || new Date()),
+                                companyId: companyId,
+                                createdById: userId
+                            }
+                        });
+
+                        if (mode.mode === 'CHEQUE') {
+                            await tx.chequeDetail.create({
+                                data: {
+                                    id: uuid(),
+                                    transactionId: transaction.id,
+                                    transactionModeDetailId: mDetail.id,
+                                    status: 'ISSUED',
+                                    chequeType: 'ISSUED',
+                                    chequeNumber: mode.chequeNumber,
+                                    companyId: companyId,
+                                    createdById: userId
+                                }
+                            });
+                        }
+                    }
+                }
+
+                await tx.financeLog.create({
+                    data: {
+                        id: uuid(),
+                        action: 'CREATE',
+                        module: 'PAYMENT_VOUCHER',
+                        recordId: transaction.id,
+                        userId: userId,
+                        username: req.user.username,
+                        companyId: companyId,
+                        description: `Created payment voucher ${transaction.referenceNumber || transaction.id}`
+                    }
+                });
+
+                return transaction;
+            });
+
+            return reply.send({ success: true, message: "Payment created successfully", data: result });
+        } catch (err) {
+            fastify.log.error(err);
+            return reply.code(500).send({ success: false, message: "Error creating payment" });
+        }
+    });
+
+    // GET /api/finance/cheque-details
+    fastify.get("/cheque-details", async (req, reply) => {
+        try {
+            const { companyId } = req.user;
+            const cheques = await prisma.chequeDetail.findMany({
+                where: { companyId },
+                include: {
+                    transaction: true,
+                    modeDetail: {
+                        include: { companyBank: true }
+                    }
+                }
+            });
+            return reply.send({ success: true, items: cheques });
+        } catch (err) {
+            fastify.log.error(err);
+            return reply.code(500).send({ success: false, message: "Error fetching cheque details" });
         }
     });
 
@@ -539,6 +842,142 @@ export async function financeRoutes(fastify) {
         } catch (err) {
             fastify.log.error(err);
             return reply.code(500).send({ success: false, message: "Error generating balance sheet" });
+        }
+    });
+
+    // GET /api/finance/reports/cash-book
+    fastify.get("/reports/cash-book", async (req, reply) => {
+        try {
+            const { companyId } = req.user;
+            const { startDate, endDate } = req.query;
+
+            const entries = await prisma.transactionEntry.findMany({
+                where: {
+                    companyId,
+                    status: 'ACTIVE',
+                    transaction: {
+                        status: 'ACTIVE',
+                        transactionDate: {
+                            gte: new Date(startDate || new Date()),
+                            lte: new Date(endDate || new Date())
+                        }
+                    },
+                    ledger: {
+                        accountTree: {
+                            name: { contains: 'Cash', mode: 'insensitive' }
+                        }
+                    }
+                },
+                include: {
+                    transaction: {
+                        include: { createdBy: { select: { username: true } } }
+                    },
+                    ledger: true
+                },
+                orderBy: { transaction: { transactionDate: 'asc' } }
+            });
+
+            return reply.send({ success: true, items: entries });
+        } catch (err) {
+            fastify.log.error(err);
+            return reply.code(500).send({ success: false, message: "Error generating cash book" });
+        }
+    });
+
+    // GET /api/finance/reports/bank-book
+    fastify.get("/reports/bank-book", async (req, reply) => {
+        try {
+            const { companyId } = req.user;
+            const { startDate, endDate, bankId } = req.query;
+
+            const where = {
+                companyId,
+                status: 'ACTIVE',
+                transaction: {
+                    status: 'ACTIVE',
+                    transactionDate: {
+                        gte: new Date(startDate || new Date()),
+                        lte: new Date(endDate || new Date())
+                    }
+                },
+                ledger: {
+                    accountTree: {
+                        name: { contains: 'Bank', mode: 'insensitive' }
+                    }
+                }
+            };
+
+            const entries = await prisma.transactionEntry.findMany({
+                where,
+                include: {
+                    transaction: {
+                        include: { 
+                            createdBy: { select: { username: true } },
+                            modeDetails: true
+                        }
+                    },
+                    ledger: true
+                },
+                orderBy: { transaction: { transactionDate: 'asc' } }
+            });
+
+            return reply.send({ success: true, items: entries });
+        } catch (err) {
+            fastify.log.error(err);
+            return reply.code(500).send({ success: false, message: "Error generating bank book" });
+        }
+    });
+
+    // GET /api/finance/reports/day-book
+    fastify.get("/reports/day-book", async (req, reply) => {
+        try {
+            const { companyId } = req.user;
+            const { date } = req.query;
+            const targetDate = new Date(date || new Date());
+            const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
+            const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
+
+            const transactions = await prisma.transaction.findMany({
+                where: {
+                    companyId,
+                    status: 'ACTIVE',
+                    transactionDate: {
+                        gte: startOfDay,
+                        lte: endOfDay
+                    }
+                },
+                include: {
+                    entries: { include: { ledger: true } },
+                    createdBy: { select: { username: true } }
+                },
+                orderBy: { transactionDate: 'asc' }
+            });
+
+            return reply.send({ success: true, items: transactions });
+        } catch (err) {
+            fastify.log.error(err);
+            return reply.code(500).send({ success: false, message: "Error generating day book" });
+        }
+    });
+
+    // GET /api/finance/reports/brs
+    fastify.get("/reports/brs", async (req, reply) => {
+        try {
+            const { companyId } = req.user;
+            const cheques = await prisma.chequeDetail.findMany({
+                where: { 
+                    companyId,
+                    status: { in: ['RECEIVED', 'ISSUED'] } // Pending cheques
+                },
+                include: {
+                    transaction: true,
+                    modeDetail: true
+                }
+            });
+            return reply.send({ success: true, items: cheques });
+        } catch (err) {
+            fastify.log.error(err);
+            return reply.code(500).send({ success: false, message: "Error generating BRS report" });
         }
     });
 }
