@@ -22,9 +22,13 @@ import videoRoutes from "./routes/video.routes.js";
 import showcaseRoutes from "./routes/showcase.routes.js";
 import portraitVideoRoutes from "./routes/portraitVideo.routes.js";
 import superadminRoutes from "./routes/superadmin.routes.js";
+<<<<<<< HEAD
 import clientAdminRoutes from "./routes/clientAdmin.routes.js";
 import performanceRoutes from "./routes/performance.routes.js";
 import crmRoutes from "./routes/crm.routes.js";
+=======
+import { financeRoutes } from "./routes/finance.routes.js";
+>>>>>>> 7eda7ded8a79a9f6a8e8fa41aa2c900f44d58a68
 
 const app = Fastify({
   logger: true,
@@ -93,6 +97,7 @@ app.register(newsRoutes, { prefix: "/api" });
 app.register(videoRoutes, { prefix: "/api" });
 app.register(showcaseRoutes, { prefix: "/api" });
 app.register(portraitVideoRoutes, { prefix: "/api" });
+app.register(financeRoutes, { prefix: "/api/finance" });
 
 
 // Start server

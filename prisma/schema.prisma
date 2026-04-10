@@ -104,6 +104,25 @@ model Admin {
   companyId        String
   firstName        String?
   lastName         String?
+  fatherOrHusband  String?
+  gender           Gender?
+  bloodGroup       BloodGroup?
+  dob              DateTime?
+  aadharNo         String?
+  panNo            String?
+  bankName         String?
+  branch           String?
+  accountHolder    String?
+  bankAccountNo    String?
+  ifsc             String?
+  nomineeName      String?
+  nomineePhone     String?
+  nomineeRelation  String?
+  city             String?
+  state            String?
+  zipCode          String?
+  country          String?
+  isModuleHead     Boolean     @default(false)
   passwordChanged  Boolean     @default(false)
   roleId           String
   
@@ -135,6 +154,7 @@ model Admin {
 }
 
 model ClientAdmin {
+<<<<<<< HEAD
   id                String             @id @default(uuid())
   username          String
   firstName         String
@@ -168,12 +188,48 @@ model ClientAdmin {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   company           Company            @relation(fields: [companyId], references: [id])
+=======
+  id              String      @id @default(uuid())
+  username        String
+  firstName       String
+  lastName        String?
+  fatherOrHusband String?
+  gender          Gender?
+  bloodGroup      BloodGroup?
+  image           String?
+  dob             DateTime?
+  phone           String
+  email           String
+  password        String
+  aadharNo        String?
+  panNo           String?
+  nomineeName     String?
+  nomineePhone    String?
+  nomineeRelation String?
+  addressLine     String?
+  city            String?
+  state           String?
+  pinCode         String?
+  country         String?
+  bankName        String?
+  branch          String?
+  accountHolder   String?
+  bankAccountNo   String?
+  ifsc            String?
+  companyId       String
+  status          AdminStatus @default(PENDING)
+  passwordChanged Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  company         Company     @relation(fields: [companyId], references: [id])
+>>>>>>> 7eda7ded8a79a9f6a8e8fa41aa2c900f44d58a68
 
   @@index([companyId])
   @@index([email])
 }
 
 model Company {
+<<<<<<< HEAD
   id                 String                @id @default(uuid())
   company            String
   address            String?
@@ -217,6 +273,56 @@ model Company {
   transactions       Transaction[]
   transactionEntries TransactionEntry[]
   payments           Payment[]
+=======
+  id                     String                  @id @default(uuid())
+  company                String
+  address                String?
+  img                    String?
+  phone                  String
+  email                  String                  @unique
+  openingBalance         Float?
+  openingBalanceType     BalanceType?
+  openingBalanceDate     DateTime?
+  status                 CompanyStatus
+  modules                String[]
+  domain                 String?                 @unique
+  primaryColour          String?
+  secondaryColour        String?
+  authIdType             AuthIdGenerationType?
+  authIdPrefix           String?
+  companyTerm            String?
+  transactionPrefix      String?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  followUps              FollowUp[]
+  galleries              Gallery[]
+  highways               Highway[]
+  news                   News[]
+  notes                  Note[]
+  notifications          Notification[]
+  plots                  Plot[]
+  portraits              Portrait[]
+  projects               Project[]
+  pushNotifications      PushNotification[]
+  roles                  Role[]
+  showcases              Showcase[]
+  users                  User[]
+  admins                 Admin[]
+  videos                 Video[]
+  accountTrees           AccountTree[]
+  ledgers                Ledger[]
+  subledgers             SubLedger[]
+  parties                Party[]
+  transactions           Transaction[]
+  transactionEntries     TransactionEntry[]
+  payments               Payment[]
+  banks                  Bank[]
+  chequeSeries           ChequeSeries[]
+  transactionModeDetails TransactionModeDetail[]
+  chequeDetails          ChequeDetail[]
+  financeLogs            FinanceLog[]
+  ClientAdmin            ClientAdmin[]
+>>>>>>> 7eda7ded8a79a9f6a8e8fa41aa2c900f44d58a68
 
   @@index([status])
 }
@@ -805,26 +911,28 @@ model Party {
 }
 
 model Transaction {
-  id                    String             @id @default(uuid())
+  id                    String                  @id @default(uuid())
   transactionType       TransactionType // RECEIPT, PAYMENT, JOURNAL, CHEQUE_ISSUE
   transactionDate       DateTime
-  referenceNumber       String?            @unique
+  referenceNumber       String?                 @unique
   narration             String?
   totalAmount           Float
-  status                TransactionStatus  @default(ACTIVE)
+  status                TransactionStatus       @default(ACTIVE)
   companyId             String
   createdById           String
   relatedTransactionId  String?
   partyId               String?
   projectId             String?
   documentUrl           String?
-  company               Company            @relation(fields: [companyId], references: [id])
-  createdBy             User               @relation(fields: [createdById], references: [id])
-  relatedTransaction    Transaction?       @relation("RelatedTransactions", fields: [relatedTransactionId], references: [id])
-  relatedByTransactions Transaction[]      @relation("RelatedTransactions")
-  party                 Party?             @relation(fields: [partyId], references: [id])
-  project               Project?           @relation(fields: [projectId], references: [id])
+  company               Company                 @relation(fields: [companyId], references: [id])
+  createdBy             User                    @relation(fields: [createdById], references: [id])
+  relatedTransaction    Transaction?            @relation("RelatedTransactions", fields: [relatedTransactionId], references: [id])
+  relatedByTransactions Transaction[]           @relation("RelatedTransactions")
+  party                 Party?                  @relation(fields: [partyId], references: [id])
+  project               Project?                @relation(fields: [projectId], references: [id])
   entries               TransactionEntry[]
+  modeDetails           TransactionModeDetail[]
+  chequeDetails         ChequeDetail[]
 
   @@index([status])
   @@index([companyId])
@@ -860,6 +968,101 @@ model Payment {
   paymentQRcode String
   companyId     String
   company       Company @relation(fields: [companyId], references: [id])
+}
+
+model Bank {
+  id            String                  @id @default(uuid())
+  name          String
+  accountNumber String?
+  ifscCode      String?
+  branch        String?
+  companyId     String
+  company       Company                 @relation(fields: [companyId], references: [id])
+  modeDetails   TransactionModeDetail[]
+
+  @@index([companyId])
+}
+
+model ChequeSeries {
+  id            String  @id @default(uuid())
+  startNumber   String
+  endNumber     String
+  currentNumber String
+  bankId        String
+  companyId     String
+  status        String  @default("ACTIVE") // ACTIVE, EXHAUSTED
+  company       Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+}
+
+model TransactionModeDetail {
+  id                String         @id @default(uuid())
+  transactionId     String
+  accountNumber     String?
+  accountHolderName String?
+  ifscCode          String?
+  bankBranch        String?
+  cardType          String?
+  cardProvider      String?
+  type              String // RECEIVED, ISSUED
+  mode              String // CASH, CHEQUE, ONLINE, CARD
+  amount            Float
+  bankName          String?
+  companyBankId     String?
+  onlineType        String? // NEFT, RTGS, IMPS, UPI, etc.
+  upiId             String?
+  referenceNumber   String?
+  cardNumber        String?
+  chequeNumber      String?
+  chequeDate        DateTime?
+  transactionDate   DateTime
+  narration         String?
+  status            String         @default("ACTIVE")
+  companyId         String
+  createdById       String
+  transaction       Transaction    @relation(fields: [transactionId], references: [id])
+  companyBank       Bank?          @relation(fields: [companyBankId], references: [id])
+  company           Company        @relation(fields: [companyId], references: [id])
+  chequeDetails     ChequeDetail[]
+
+  @@index([transactionId])
+  @@index([companyId])
+}
+
+model ChequeDetail {
+  id                      String                @id @default(uuid())
+  transactionId           String
+  transactionModeDetailId String
+  status                  String // RECEIVED, ISSUED, CANCELLED, CLEARED, BOUNCED
+  remarks                 String?
+  companyId               String
+  createdById             String
+  chequeType              String // RECEIVED, ISSUED
+  chequeNumber            String
+  transaction             Transaction           @relation(fields: [transactionId], references: [id])
+  modeDetail              TransactionModeDetail @relation(fields: [transactionModeDetailId], references: [id])
+  company                 Company               @relation(fields: [companyId], references: [id])
+
+  @@index([transactionId])
+  @@index([companyId])
+}
+
+model FinanceLog {
+  id          String   @id @default(uuid())
+  action      String // CREATE, UPDATE, DELETE, VIEW_REPORT
+  module      String // GENERAL_RECEIPT, PAYMENT_VOUCHER, etc.
+  recordId    String?
+  userId      String
+  username    String
+  companyId   String
+  description String
+  details     Json?
+  createdAt   DateTime @default(now())
+  company     Company  @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+  @@index([userId])
 }
 
 enum AccountType {
