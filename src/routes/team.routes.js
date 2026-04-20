@@ -25,126 +25,174 @@ export default async function teamRoutes(fastify) {
                 roleName?.toLowerCase() === 'admin' ||
                 roleNo <= 4;
 
-            let userId = id || request.user.userId;
-            let whereClause = { companyId };
+            // 1. Fetch data from all hierarchy levels
+            const [clientAdmin, admins, allUsers] = await Promise.all([
+                // Use findFirst because companyId might not be the PK
+                prisma.clientAdmin.findFirst({ where: { companyId } }),
+                prisma.admin.findMany({ where: { companyId }, include: { role: true } }),
+                prisma.user.findMany({
+                    where: {
+                        companyId,
+                        ...(status ? { status } : {}),
+                        ...(roleId ? { roleId } : {})
+                    },
+                    include: { role: true }
+                })
+            ]);
 
-            if (isPowerRole && !id) {
-                console.log(`[DEBUG] Power Role detected in /my-team without ID, showing all company users...`);
-                // No additional filtering needed, whereClause already has companyId
-            } else {
-                // Get all subordinates recursively starting from userId
-                const allSubordinateIds = await getAllSubordinateIds(prisma, userId, companyId, status);
-                console.log(`[DEBUG] Found ${allSubordinateIds.length} subordinates for user ${userId}`);
-                whereClause.id = { in: [...allSubordinateIds, userId] }; // Include self
+            // 2. Identify the "True Root" (Company Admin)
+            let companyRoot = null;
+            
+            // Priority 1: ClientAdmin table
+            if (clientAdmin) {
+                companyRoot = {
+                    id: clientAdmin.id,
+                    username: clientAdmin.username,
+                    firstName: clientAdmin.firstName,
+                    lastName: clientAdmin.lastName,
+                    image: clientAdmin.image,
+                    email: clientAdmin.email,
+                    phone: clientAdmin.phone,
+                    title: 'Company Admin',
+                    sourceTable: 'ClientAdmin'
+                };
             }
-
-            let startId = id || request.user.userId;
-
-            // If Admin and no specific ID requested, start from the 'company' root user
-            if (isPowerRole && !id) {
-                console.log(`[DEBUG] Admin detected without ID, searching for 'company' root user...`);
-                const companyUser = await prisma.user.findFirst({
-                    where: { username: 'company', companyId }
-                });
-                if (companyUser) {
-                    startId = companyUser.id;
-                    console.log(`[DEBUG] Found 'company' root user: ${startId}`);
-                } else {
-                    console.warn(`[DEBUG] WARNING: No 'company' root user found for companyId=${companyId}`);
+            
+            // Priority 2: User with role COMPANY_ADMIN
+            if (!companyRoot) {
+                const caUser = allUsers.find(u => 
+                    u.role?.roleName?.toUpperCase() === 'COMPANY_ADMIN' || 
+                    u.role?.roleNo === 1 || 
+                    u.username?.toLowerCase() === 'company'
+                );
+                if (caUser) {
+                    companyRoot = {
+                        id: caUser.id,
+                        username: caUser.username,
+                        firstName: caUser.firstName,
+                        lastName: caUser.lastName,
+                        image: caUser.image,
+                        email: caUser.email,
+                        phone: caUser.phone,
+                        title: caUser.role?.displayName || caUser.role?.roleName || 'Company Admin',
+                        sourceTable: 'User'
+                    };
                 }
             }
 
-            // Fetch the root user for the tree
-            const mainUser = await prisma.user.findUnique({
-                where: { id: startId },
-                include: { role: true }
-            });
-
-            if (!mainUser) {
-                console.error(`[DEBUG] Main user with ID ${startId} not found in User table.`);
-                return reply.send({ success: true, data: [], totalCount: 0 });
+            // 3. Determine startId
+            let startId = id;
+            if (!startId) {
+                // If the user hasn't selected a node, start from the Company Root (if we are a power role)
+                // or the user's manager context.
+                startId = companyRoot?.id || request.user.userId;
             }
 
-            console.log(`[DEBUG] Building tree starting from user: ${mainUser.username} (${mainUser.id})`);
+            // 4. Build a unified map for all entities
+            const userMap = new Map();
+            const getName = (u) => u.username || (`${u.firstName || ''} ${u.lastName || ''}`).trim() || 'User';
 
-            // Fetch ALL users for this company to build the tree in memory (much faster than recursion)
-            const allUsers = await prisma.user.findMany({
-                where: {
-                    companyId,
-                    ...(status ? { status } : {}),
-                    ...(roleId ? { roleId } : {})
-                },
-                include: { role: true }
+            // Add the identified Company Root (if they aren't already in another list)
+            if (companyRoot) {
+                userMap.set(companyRoot.id, {
+                    ...companyRoot,
+                    name: getName(companyRoot),
+                    userAuthId: companyRoot.id?.substring(0, 8),
+                    childs: []
+                });
+            }
+
+            // Add Admins (SECOND LAYER)
+            admins.forEach(u => {
+                userMap.set(u.id, {
+                    id: u.id,
+                    username: u.username,
+                    firstName: u.firstName,
+                    lastName: u.lastName,
+                    name: getName(u),
+                    userAuthId: u.id?.substring(0, 8),
+                    status: 'VERIFIED',
+                    email: u.email,
+                    phone: u.phone,
+                    image: u.image,
+                    title: u.role?.displayName || u.role?.roleName || 'Admin',
+                    roleId: u.roleId,
+                    referId: companyRoot?.id || null, // Admins report to the Company Root
+                    childs: []
+                });
             });
 
-            console.log(`[DEBUG] Fetched ${allUsers.length} users for company ${companyId}`);
-
-            // Build map of users for efficient lookup
-            const userMap = new Map();
+            // Add Users (LAYER 3+)
             allUsers.forEach(u => {
                 userMap.set(u.id, {
                     id: u.id,
                     username: u.username,
                     firstName: u.firstName,
                     lastName: u.lastName,
-                    name: u.username,
-                    userAuthId: u.userAuthId,
+                    name: getName(u),
+                    userAuthId: u.userAuthId || u.id?.substring(0, 8),
                     status: u.status,
                     email: u.email,
                     phone: u.phone,
                     image: u.image,
                     title: u.role?.displayName || u.role?.roleName || 'Associate',
                     roleId: u.roleId,
-                    referId: u.referId,
+                    referId: u.referId, // Links to a User OR an Admin
                     childs: []
                 });
             });
 
-            // Ensure the root user is in the map (even if status/role filters might exclude them normally)
-            if (!userMap.has(mainUser.id)) {
-                userMap.set(mainUser.id, {
-                    id: mainUser.id,
-                    username: mainUser.username,
-                    firstName: mainUser.firstName,
-                    lastName: mainUser.lastName,
-                    name: mainUser.username,
-                    userAuthId: mainUser.userAuthId,
-                    status: mainUser.status,
-                    email: mainUser.email,
-                    phone: mainUser.phone,
-                    image: mainUser.image,
-                    title: mainUser.role?.displayName || mainUser.role?.roleName || 'Associate',
-                    roleId: mainUser.roleId,
-                    referId: mainUser.referId,
-                    childs: []
-                });
+            // Ensure requested node exists
+            if (!userMap.has(startId)) {
+               // Fallback load for specific IDs
+               let extra = await prisma.user.findUnique({ where: { id: startId }, include: { role: true } });
+               if (!extra) extra = await prisma.admin.findUnique({ where: { id: startId }, include: { role: true } });
+               if (extra) {
+                   userMap.set(extra.id, {
+                       id: extra.id,
+                       username: extra.username,
+                       firstName: extra.firstName,
+                       lastName: extra.lastName,
+                       name: getName(extra),
+                       userAuthId: extra.userAuthId || extra.id?.substring(0, 8),
+                       status: extra.status || 'VERIFIED',
+                       email: extra.email,
+                       phone: extra.phone,
+                       image: extra.image,
+                       title: extra.role?.displayName || extra.role?.roleName || 'Associate',
+                       roleId: extra.roleId,
+                       referId: extra.referId || (extra.companyId === companyRoot?.companyId ? companyRoot?.id : null),
+                       childs: []
+                   });
+               }
             }
 
-            const treeRoot = userMap.get(mainUser.id);
-            const results = [treeRoot];
+            if (!userMap.has(startId)) {
+                return reply.send({ success: true, items: [], totalCount: 0 });
+            }
 
-            // Reconstruct hierarchy in memory
-            let totalNodes = 0;
+            const treeRoot = userMap.get(startId);
+
+            // 5. Build Hierarchy
             userMap.forEach(user => {
-                totalNodes++;
-                if (user.referId && userMap.has(user.referId) && user.id !== mainUser.id) {
+                if (user.referId && userMap.has(user.referId) && user.id !== startId) {
                     const parent = userMap.get(user.referId);
                     parent.childs.push(user);
                 }
             });
 
-            console.log(`[DEBUG] Tree built successfully. Children of root: ${treeRoot.childs.length}`);
+            console.log(`[DEBUG] Tree Finalized. Root: ${treeRoot.name}, Hierarchy Level: ${companyRoot ? 'Full Company' : 'Partial'}`);
 
             return reply.send({
                 success: true,
                 status: 200,
                 items: treeRoot,
-                totalCount: allUsers.length // or recursively calculate the nodes in the sub-tree
+                totalCount: userMap.size
             });
 
         } catch (error) {
             console.error('[ERROR] /associates-tree:', error);
-            return reply.status(500).send({ success: false, message: 'Internal Server Error', error: error.message });
+            return reply.status(500).send({ success: false, message: 'Internal Server Error', error: error.message, items: [] });
         }
     });
 
@@ -162,6 +210,8 @@ export default async function teamRoutes(fastify) {
                 to,
                 search,
             } = request.query;
+            const skip = (Number(page) - 1) * Number(size);
+            const take = Number(size);
             const companyId = request.user.companyId;
 
             console.log(`[DEBUG] /my-team: userType=${request.user.userType}, companyId=${companyId}, queryId=${id}`);
@@ -185,7 +235,7 @@ export default async function teamRoutes(fastify) {
                 // No additional filtering needed, whereClause already has companyId
             } else {
                 // Get all subordinates recursively starting from userId
-                const allSubordinateIds = await getAllSubordinateIds(prisma, userId, status, companyId);
+                const allSubordinateIds = await getAllSubordinateIds(prisma, userId, companyId, status);
                 console.log(`[DEBUG] Found ${allSubordinateIds.length} subordinates for user ${userId}`);
                 whereClause.id = { in: allSubordinateIds };
             }

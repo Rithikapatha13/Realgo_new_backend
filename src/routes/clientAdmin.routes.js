@@ -11,7 +11,13 @@ export default async function clientAdminRoutes(fastify) {
         const roleName = (req.user.role?.roleName || "").toUpperCase();
 
         const isSuperAdmin = userType === 'superadmin' || userType === 'super-admin' || roleName === 'SUPERADMIN';
-        const isClientAdminRole = userType === 'clientadmin' || userType === 'companyadmin' || roleName === 'COMPANY_ADMIN' || roleName === 'CLIENT_ADMIN';
+        const isClientAdminRole = 
+            userType === 'clientadmin' || 
+            userType === 'companyadmin' || 
+            userType === 'admin' ||
+            roleName === 'COMPANY_ADMIN' || 
+            roleName === 'CLIENT_ADMIN' ||
+            roleName.includes('ADMIN');
 
         if (!isSuperAdmin && !isClientAdminRole) {
             return reply.code(403).send({ success: false, message: "Forbidden: Client Admin access required" });

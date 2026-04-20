@@ -23,7 +23,7 @@ model User {
   spouseName        String?
   spousePhone       String?
   image             String?
-  dob               DateTime
+  dob               DateTime?
   phone             String
   email             String
   password          String
@@ -37,6 +37,10 @@ model User {
   addressLine       String?
   landmark          String?
   pinCode           String?
+  city              String?
+  state             String?
+  country           String?
+  alternativePhone  String?
   bankName          String?
   branch            String?
   accountHolder     String?
@@ -53,15 +57,15 @@ model User {
   passwordChanged   Boolean            @default(false)
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
-  followUps         FollowUp[]
-  leads             Lead[]
-  notes             Note[]
-  notifications     Notification[]
-  pushNotifications PushNotification[]
-  reminders         Reminder[]
+  followUps         FollowUp[]         @relation("UserFollowUps")
+  leads             Lead[]             @relation("UserLeads")
+  notes             Note[]             @relation("UserNotes")
+  notifications     Notification[]     @relation("UserNotifications")
+  pushNotifications PushNotification[] @relation("UserPushNotifications")
+  reminders         Reminder[]         @relation("UserReminders")
   requestedByMe     Request[]          @relation("UserRequestedBy")
   requests          Request[]          @relation("UserRequests")
-  siteVisits        SiteVisit[]
+  siteVisits        SiteVisit[]        @relation("UserSiteVisits")
   company           Company            @relation(fields: [companyId], references: [id])
   role              Role               @relation(fields: [roleId], references: [id])
   transactions      Transaction[]
@@ -74,12 +78,12 @@ model User {
   lastActiveAt       DateTime?
 
   // Relations for Leadflow Trackers
-  telecallerLeads Lead[]     @relation("TelecallerLeads")
+  telecallerLeads Lead[]     @relation("UserLeadsTC")
   associateLeads  Lead[]     @relation("AssociateLeads")
   assignedLeads   Lead[]     @relation("AdminAssignments")
-  callLogs        CallLog[]
-  meetings        Meeting[]
-  activities      Activity[]
+  callLogs        CallLog[]  @relation("UserCallLogs")
+  meetings        Meeting[]  @relation("UserMeetings")
+  activities      Activity[] @relation("UserActivities")
 
   @@index([companyId])
   @@index([roleId])
@@ -127,6 +131,89 @@ model Admin {
   roleId           String
   company          Company     @relation(fields: [companyId], references: [id])
   role             Role        @relation(fields: [roleId], references: [id])
+
+  // CRM Relations
+  telecallerLeads  Lead[]      @relation("AdminTCLeads")
+  callLogs         CallLog[]   @relation("AdminTCCallLogs")
+}
+
+model Telecaller {
+  id                String             @id @default(uuid())
+  username          String
+  firstName         String
+  lastName          String?
+  fatherOrHusband   String?
+  gender            Gender?
+  bloodGroup        BloodGroup?
+  position          String?
+  income            Float?
+  academicQual      String?
+  languages         String[]
+  maritalStatus     String?
+  spouseName        String?
+  spousePhone       String?
+  image             String?
+  dob               DateTime?
+  phone             String
+  email             String
+  password          String
+  aadharCard        String?
+  aadharNo          String?
+  panCard           String?
+  panNo             String?
+  nomineeName       String?
+  nomineePhone      String?
+  nomineeRelation   String?
+  addressLine       String?
+  landmark          String?
+  pinCode           String?
+  city              String?
+  state             String?
+  country           String?
+  alternativePhone  String?
+  bankName          String?
+  branch            String?
+  accountHolder     String?
+  bankAccountNo     String?
+  ifsc              String?
+  referId           String?
+  createdById       String
+  companyId         String
+  roleId            String
+  userAuthId        String?
+  teamHeadId        String?
+  reasonForReject   String?
+  status            StatusType         @default(PENDING)
+  passwordChanged   Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  company           Company            @relation(fields: [companyId], references: [id])
+  role              Role               @relation(fields: [roleId], references: [id])
+
+  // CRM Relations
+  leads             Lead[]             @relation("TelecallerTableLeads")
+  callLogs          CallLog[]          @relation("TelecallerTableCallLogs")
+  activities        Activity[]         @relation("TelecallerActivities")
+  notifications     Notification[]     @relation("TelecallerNotifications")
+  pushNotifications PushNotification[] @relation("TelecallerPushNotifications")
+  notes             Note[]             @relation("TelecallerNotes")
+  meetings          Meeting[]          @relation("TelecallerMeetings")
+  reminders         Reminder[]         @relation("TelecallerReminders")
+  siteVisits        SiteVisit[]        @relation("TelecallerSiteVisits")
+  followUps         FollowUp[]         @relation("TelecallerFollowUps")
+
+  // Trackers
+  availability       String    @default("AVAILABLE")
+  isOnline           Boolean   @default(false)
+  mustChangePassword Boolean   @default(true)
+  lastLoginAt        DateTime?
+  lastActiveAt       DateTime?
+
+  @@index([companyId])
+  @@index([roleId])
+  @@index([status])
+  @@index([email])
 }
 
 model ClientAdmin {
@@ -204,6 +291,7 @@ model Company {
   showcases          Showcase[]
   users              User[]
   admins             Admin[]
+  telecallers        Telecaller[]
   videos             Video[]
   accountTrees       AccountTree[]
   ledgers            Ledger[]
@@ -259,7 +347,9 @@ model FollowUp {
   updatedAt      DateTime         @updatedAt
   company        Company          @relation(fields: [companyId], references: [id])
   project        Project?         @relation(fields: [projectId], references: [id])
-  user           User             @relation(fields: [userId], references: [id])
+  user           User?            @relation("UserFollowUps", fields: [userId], references: [id])
+  telecallerId   String?
+  telecaller     Telecaller?      @relation("TelecallerFollowUps", fields: [telecallerId], references: [id])
 
   @@index([userId])
   @@index([companyId])
@@ -296,7 +386,9 @@ model Notification {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   company          Company  @relation(fields: [companyId], references: [id])
-  user             User     @relation(fields: [userId], references: [id])
+  user             User?    @relation("UserNotifications", fields: [userId], references: [id])
+  telecallerId     String?
+  telecaller       Telecaller? @relation("TelecallerNotifications", fields: [telecallerId], references: [id])
 
   @@index([userId])
   @@index([companyId])
@@ -439,7 +531,9 @@ model Note {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   company         Company  @relation(fields: [companyId], references: [id])
-  user            User     @relation(fields: [userId], references: [id])
+  user            User?      @relation("UserNotes", fields: [userId], references: [id])
+  telecallerId    String?
+  telecaller      Telecaller? @relation("TelecallerNotes", fields: [telecallerId], references: [id])
 
   @@index([userId])
   @@index([companyId])
@@ -473,14 +567,24 @@ model Lead {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   project               Project?  @relation(fields: [projectInterestedIn], references: [id])
-  user                  User      @relation(fields: [userId], references: [id])
+  user                  User      @relation("UserLeads", fields: [userId], references: [id])
 
   // --- LEADFLOW CRM FIELDS (Safe Appends) ---
   assocStatus String?
 
   // Leadflow Assignments
+  // original (Keeping this to prevent data loss during migration)
   telecallerId String?
-  telecaller   User?   @relation("TelecallerLeads", fields: [telecallerId], references: [id])
+  telecaller   User?   @relation("UserLeadsTC", fields: [telecallerId], references: [id])
+
+  // NEW: Dedicated Telecaller table
+  dedicatedTCId String?
+  dedicatedTC   Telecaller? @relation("TelecallerTableLeads", fields: [dedicatedTCId], references: [id])
+  
+  // NEW: Admin (for Telecaller Admins)
+  adminTCId     String?
+  adminTC       Admin?      @relation("AdminTCLeads", fields: [adminTCId], references: [id])
+
   associateId  String?
   associate    User?   @relation("AssociateLeads", fields: [associateId], references: [id])
   assignedById String?
@@ -506,7 +610,9 @@ model Reminder {
   selectedDays String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
-  user         User       @relation(fields: [userId], references: [id])
+  user         User?      @relation("UserReminders", fields: [userId], references: [id])
+  telecallerId String?
+  telecaller   Telecaller? @relation("TelecallerReminders", fields: [telecallerId], references: [id])
 
   @@index([userId])
   @@index([date])
@@ -566,6 +672,7 @@ model Role {
   company     Company    @relation(fields: [companyId], references: [id])
   users       User[]
   admins      Admin[]
+  telecallers Telecaller[]
 
   @@index([companyId])
   @@index([status])
@@ -596,7 +703,9 @@ model SiteVisit {
   changeLog        String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
-  user             User     @relation(fields: [userId], references: [id])
+  user             User?    @relation("UserSiteVisits", fields: [userId], references: [id])
+  telecallerId     String?
+  telecaller       Telecaller? @relation("TelecallerSiteVisits", fields: [telecallerId], references: [id])
 
   @@index([userId])
   @@index([date])
@@ -614,7 +723,9 @@ model PushNotification {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   company       Company  @relation(fields: [companyId], references: [id])
-  user          User     @relation(fields: [userId], references: [id])
+  user          User?    @relation("UserPushNotifications", fields: [userId], references: [id])
+  telecallerId  String?
+  telecaller    Telecaller? @relation("TelecallerPushNotifications", fields: [telecallerId], references: [id])
 
   @@index([userId])
   @@index([companyId])
@@ -1002,8 +1113,15 @@ model CallLog {
   id           String    @id @default(cuid())
   leadId       String
   lead         Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  telecallerId String
-  telecaller   User      @relation(fields: [telecallerId], references: [id])
+  // Legacy field for migration safety
+  telecallerId      String?
+  telecaller        User?      @relation("UserCallLogs", fields: [telecallerId], references: [id])
+  
+  // New fields
+  dedicatedTCId     String?
+  dedicatedTC       Telecaller? @relation("TelecallerTableCallLogs", fields: [dedicatedTCId], references: [id])
+  adminTCId         String?
+  adminTC           Admin?      @relation("AdminTCCallLogs", fields: [adminTCId], references: [id])
   status       String
   notes        String?
   callbackAt   DateTime?
@@ -1017,7 +1135,9 @@ model Meeting {
   leadId        String
   lead          Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
   associateId   String
-  associate     User      @relation(fields: [associateId], references: [id])
+  associate     User       @relation("UserMeetings", fields: [associateId], references: [id])
+  telecallerId  String?
+  telecaller    Telecaller? @relation("TelecallerMeetings", fields: [telecallerId], references: [id])
   outcome       String
   meetingDate   DateTime?
   notes         String?
@@ -1032,7 +1152,9 @@ model Meeting {
 model Activity {
   id        String   @id @default(cuid())
   userId    String?
-  user      User?    @relation(fields: [userId], references: [id])
+  user      User?    @relation("UserActivities", fields: [userId], references: [id])
+  telecallerId String?
+  telecaller   Telecaller? @relation("TelecallerActivities", fields: [telecallerId], references: [id])
   text      String
   color     String   @default("#3b82f6")
   createdAt DateTime @default(now())

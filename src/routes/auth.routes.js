@@ -70,6 +70,28 @@ export default async function authRoutes(fastify) {
         return res.code(200).send({ companies: admin, role: "admin" });
       }
 
+
+      // Telecaller (Dedicated Table)
+      const telecallers = await fastify.prisma.telecaller.findMany({
+        where: { phone },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          company: {
+            select: {
+              id: true,
+              company: true,
+              img: true,
+            },
+          },
+        },
+      });
+
+      if (telecallers.length > 0) {
+        return res.code(200).send({ companies: telecallers, role: "telecaller" });
+      }
+
       // User (multi-company)
       const users = await fastify.prisma.user.findMany({
         where: { phone },
@@ -191,7 +213,8 @@ export default async function authRoutes(fastify) {
         if (authUser && !userType) {
           userType = "admin";
         } else if (!authUser) {
-          authUser = await fastify.prisma.user.findFirst({
+          // ---------------- TELECALLER (Dedicated Table) ----------------
+          authUser = await fastify.prisma.telecaller.findFirst({
             where: { phone, companyId },
             include: {
               company: {
@@ -211,7 +234,33 @@ export default async function authRoutes(fastify) {
               },
             },
           });
-          userType = authUser ? "associate" : null;
+
+          if (authUser) {
+            userType = "telecaller";
+          } else {
+            // ---------------- USER (Associates) ----------------
+            authUser = await fastify.prisma.user.findFirst({
+              where: { phone, companyId },
+              include: {
+                company: {
+                  select: {
+                    img: true,
+                    company: true,
+                    primaryColour: true,
+                    secondaryColour: true,
+                  },
+                },
+                role: {
+                  select: {
+                    roleName: true,
+                    modules: true,
+                    roleNo: true,
+                  },
+                },
+              },
+            });
+            userType = authUser ? "associate" : null;
+          }
         }
       }
 
@@ -270,6 +319,7 @@ export default async function authRoutes(fastify) {
       if (companyId) tokenPayload.companyId = companyId;
       if (authUser.role) {
         tokenPayload.role = authUser.role;
+        tokenPayload.roleId = authUser.roleId;
         tokenPayload.roleNo = authUser.role.roleNo;
         tokenPayload.roleModules = authUser.role.modules;
       }

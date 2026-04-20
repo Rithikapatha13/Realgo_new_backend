@@ -21,16 +21,19 @@ export default async function crmRoutes(fastify) {
             const where = { companyId };
 
             // 1. Role Filters
-            const isTelecaller = roleName === "TELECALLER";
+            const isTC = userType === "telecaller";
+            const isAdminTC = userType === "admin" && roleName === "TELECALLER ADMIN";
             const isAccountant = roleName === "ACCOUNTANT" || roleName === "ACCOUNTS";
-            const isAdmin = userType === "admin" || userType === "clientadmin" || userType === "superadmin";
+            const isAdmin = (userType === "admin" || userType === "clientadmin" || userType === "superadmin") && !isAdminTC;
 
-            if (isTelecaller) {
-                // Telecallers only see leads uniquely assigned to them
-                where.telecallerId = req.user.id;
+            if (isTC) {
+                // Dedicated Telecaller table
+                where.dedicatedTCId = req.user.id;
+            } else if (isAdminTC) {
+                // Admin table telecaller
+                where.adminTCId = req.user.id;
             } else if (!isAdmin && !isAccountant) {
-                // Anyone in the User table who is NOT a telecaller or accountant is an Associate.
-                // captures both self-sourced and assigned leads.
+                // Associate
                 where.associateId = req.user.id;
             }
 
@@ -43,7 +46,8 @@ export default async function crmRoutes(fastify) {
                     where.assocStatus = status;
                 }
                 if (status === "UNASSIGNED") {
-                    where.telecallerId = null;
+                    where.dedicatedTCId = null;
+                    where.adminTCId = null;
                 }
             }
 
@@ -65,8 +69,10 @@ export default async function crmRoutes(fastify) {
             const leads = await prisma.lead.findMany({
                 where,
                 include: {
-                    telecaller: { select: { id: true, firstName: true, lastName: true } },
-                    associate: { select: { id: true, firstName: true, lastName: true } },
+                    dedicatedTC: { select: { id: true, firstName: true, lastName: true, image: true } },
+                    adminTC: { select: { id: true, firstName: true, lastName: true, image: true } },
+                    telecaller: { select: { id: true, firstName: true, lastName: true } }, // Legacy include for names
+                    associate: { select: { id: true, firstName: true, lastName: true, image: true } },
                     callLogs: { select: { id: true, callbackAt: true } }
                 },
                 orderBy: { updatedAt: "desc" }
@@ -149,8 +155,9 @@ export default async function crmRoutes(fastify) {
                     date: new Date(),
                     companyId,
                     userId: creatorUserId, 
-                    telecallerId,
-                    associateId,
+                    dedicatedTCId: userType === "telecaller" ? req.user.id : undefined,
+                    adminTCId: userType === "admin" && roleName === "TELECALLER ADMIN" ? req.user.id : undefined,
+                    associateId: !isTC && !isAdminTC && !isAdmin ? req.user.id : undefined,
                     assignedById: isAdmin ? null : req.user.id
                 }
             });
@@ -202,11 +209,12 @@ export default async function crmRoutes(fastify) {
             });
 
             // Log the call history into Realgo CallLog (if Telecaller is making it)
-            if (roleName === "TELECALLER") {
+            if (userType === "telecaller" || (userType === "admin" && roleName === "TELECALLER ADMIN")) {
                 await prisma.callLog.create({
                     data: {
                         leadId: id,
-                        telecallerId: req.user.id,
+                        dedicatedTCId: userType === "telecaller" ? req.user.id : null,
+                        adminTCId: userType === "admin" ? req.user.id : null,
                         status: status,
                         notes: notes,
                         callbackAt: callbackAt ? new Date(callbackAt) : null
@@ -243,13 +251,27 @@ export default async function crmRoutes(fastify) {
             const userType = (req.user.userType || "").toLowerCase();
             const isAdmin = userType === "admin" || userType === "clientadmin" || userType === "superadmin";
 
+            // Check if telecallerId provided is for Telecaller table or Admin table
+            // In a production app, the frontend should ideally specify, but we can check if it exists in Admin
+            let assignData = {
+                associateId: associateId !== undefined ? associateId : undefined,
+                assignedById: isAdmin ? null : req.user.id
+            };
+
+            if (telecallerId !== undefined) {
+                const isAdminUser = telecallerId ? await prisma.admin.findUnique({ where: { id: telecallerId } }) : null;
+                if (isAdminUser) {
+                    assignData.adminTCId = telecallerId;
+                    assignData.dedicatedTCId = null;
+                } else {
+                    assignData.dedicatedTCId = telecallerId;
+                    assignData.adminTCId = null;
+                }
+            }
+
             lead = await prisma.lead.update({
                 where: { id },
-                data: {
-                    telecallerId: telecallerId !== undefined ? telecallerId : undefined,
-                    associateId: associateId !== undefined ? associateId : undefined,
-                    assignedById: isAdmin ? null : req.user.id
-                }
+                data: assignData
             });
 
             return reply.send({ success: true, lead });
@@ -269,15 +291,18 @@ export default async function crmRoutes(fastify) {
             const roleName = (req.user.role?.roleName || "").toUpperCase();
             const userType = (req.user.userType || "").toLowerCase();
 
-            const isTelecaller = roleName === "TELECALLER";
+            const isTC = userType === "telecaller";
+            const isAdminTC = userType === "admin" && roleName === "TELECALLER ADMIN";
             const isAccountant = roleName === "ACCOUNTANT" || roleName === "ACCOUNTS";
-            const isAdmin = userType === "admin" || userType === "clientadmin" || userType === "superadmin";
-            const isAssociate = !isAdmin && !isTelecaller && !isAccountant;
+            const isAdmin = (userType === "admin" || userType === "clientadmin" || userType === "superadmin") && !isAdminTC;
+            const isAssociate = !isAdmin && !isTC && !isAdminTC && !isAccountant;
 
             const baseWhere = { companyId };
             
-            if (isTelecaller) {
-                baseWhere.telecallerId = req.user.id;
+            if (isTC) {
+                baseWhere.dedicatedTCId = req.user.id;
+            } else if (isAdminTC) {
+                baseWhere.adminTCId = req.user.id;
             } else if (isAssociate) {
                 baseWhere.associateId = req.user.id;
             }
@@ -300,7 +325,7 @@ export default async function crmRoutes(fastify) {
                 prisma.lead.count({ where: { ...baseWhere, leadStatus: 'COLD' } }),
                 prisma.lead.count({ where: { ...baseWhere, leadStatus: 'NEW' } }),
                 prisma.lead.count({ where: { ...baseWhere, leadStatus: 'LATER' } }),
-                prisma.lead.count({ where: { ...baseWhere, telecallerId: null } }),
+                prisma.lead.count({ where: { ...baseWhere, dedicatedTCId: null, adminTCId: null } }),
                 prisma.lead.count({ where: { ...baseWhere, assocStatus: 'SITEVISIT' } }),
                 prisma.lead.count({ where: { ...baseWhere, assocStatus: 'BOOKED' } }),
                 prisma.lead.count({ where: { ...baseWhere, assocStatus: 'PAYMENT_PENDING' } })
@@ -353,10 +378,15 @@ export default async function crmRoutes(fastify) {
             const isAdmin = userType === "admin" || userType === "clientadmin" || userType === "superadmin";
             const isAssociate = !isAdmin && !isTelecaller && !isAccountant;
 
+            const isTC = userType === "telecaller";
+            const isAdminTC = userType === "admin" && roleName === "TELECALLER ADMIN";
+
             const where = { lead: { companyId } };
 
-            if (isTelecaller) {
-                where.lead.telecallerId = req.user.id;
+            if (isTC) {
+                where.lead.dedicatedTCId = req.user.id;
+            } else if (isAdminTC) {
+                where.lead.adminTCId = req.user.id;
             } else if (isAssociate) {
                 where.lead.associateId = req.user.id;
             }
@@ -364,6 +394,8 @@ export default async function crmRoutes(fastify) {
             const logs = await prisma.callLog.findMany({
                 where,
                 include: {
+                    dedicatedTC: { select: { firstName: true, lastName: true } },
+                    adminTC: { select: { firstName: true, lastName: true } },
                     telecaller: { select: { firstName: true, lastName: true } },
                     lead: { select: { leadName: true } }
                 },
@@ -371,12 +403,17 @@ export default async function crmRoutes(fastify) {
                 take: 15
             });
 
-            const activities = logs.map(l => ({
-                id: l.id,
-                text: `<strong>${l.telecaller.firstName}</strong> marked ${l.lead.leadName} as <strong>${l.status}</strong>`,
-                createdAt: l.createdAt,
-                color: l.status === 'HOT' ? '#ef4444' : '#3b82f6'
-            }));
+            const activities = logs.map(l => {
+                const tcName = l.dedicatedTC ? l.dedicatedTC.firstName : 
+                               l.adminTC ? l.adminTC.firstName : 
+                               l.telecaller?.firstName || "System";
+                return {
+                    id: l.id,
+                    text: `<strong>${tcName}</strong> marked ${l.lead.leadName} as <strong>${l.status}</strong>`,
+                    createdAt: l.createdAt,
+                    color: l.status === 'HOT' ? '#ef4444' : '#3b82f6'
+                };
+            });
 
             return reply.send({ success: true, activities });
         } catch (err) {

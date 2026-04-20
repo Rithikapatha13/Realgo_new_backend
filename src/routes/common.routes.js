@@ -41,17 +41,39 @@ export default async function commonRoutes(fastify) {
 
   fastify.post("/update-profile", async (req, res) => {
     try {
-      const { id, username, email, image, userType, isAdmin, ...details } = req.body;
+      const { id, username, email, image, userType, isAdmin, firstName, lastName, phone, ...details } = req.body;
       const type = (userType || (isAdmin ? "admin" : "user")).toLowerCase();
+      
+      console.log(`Updating profile for ID: ${id}, Type: ${type}`);
 
-      const updateData = {
+      // Robust date parsing for dob
+      let parsedDob = undefined;
+      if (details.dob && details.dob.trim() !== "") {
+        const dateObj = new Date(details.dob);
+        if (!isNaN(dateObj.getTime())) {
+          parsedDob = dateObj;
+        }
+      }
+
+      // Sanitize Enum fields (Gender, BloodGroup)
+      const sanitizeEnum = (val, allowed) => {
+        if (!val || val.trim() === "") return undefined;
+        const upper = val.toUpperCase();
+        return allowed.includes(upper) ? upper : undefined;
+      };
+
+      // BASE FIELDS (Existent in User, Admin, and ClientAdmin)
+      const baseUpdateData = {
         username,
+        firstName,
+        lastName,
         email,
+        phone,
         image,
         fatherOrHusband: details.fatherOrHusband,
-        gender: details.gender,
-        bloodGroup: details.bloodGroup,
-        dob: details.dob ? new Date(details.dob) : undefined,
+        gender: sanitizeEnum(details.gender, ["MALE", "FEMALE", "OTHER"]),
+        bloodGroup: sanitizeEnum(details.bloodGroup, ["A_POS", "A_NEG", "B_POS", "B_NEG", "O_POS", "O_NEG", "AB_POS", "AB_NEG"]),
+        dob: parsedDob,
         aadharNo: details.aadharNo,
         panNo: details.panNo,
         bankName: details.bankName,
@@ -64,29 +86,45 @@ export default async function commonRoutes(fastify) {
         nomineeRelation: details.nomineeRelation,
         city: details.city,
         state: details.state,
-        pinCode: details.pinCode || details.zipCode,
         country: details.country,
       };
 
       if (type === "clientadmin") {
         await fastify.prisma.clientAdmin.update({
           where: { id },
-          data: updateData,
+          data: {
+            ...baseUpdateData,
+            pinCode: details.pinCode || details.zipCode
+          },
         });
       } else if (type === "admin") {
         await fastify.prisma.admin.update({
           where: { id },
-          data: updateData,
+          data: {
+            ...baseUpdateData,
+            zipCode: details.pinCode || details.zipCode
+          },
         });
       } else if (type === "superadmin") {
         await fastify.prisma.superAdmin.update({
           where: { id },
-          data: { username, email, image },
+          data: { 
+            username, 
+            email, 
+            phone,
+            image,
+            firstName,
+            lastName
+          },
         });
       } else {
+        // Default to USER table
         await fastify.prisma.user.update({
           where: { id },
-          data: updateData,
+          data: {
+            ...baseUpdateData,
+            pinCode: details.pinCode || details.zipCode
+          },
         });
       }
 
@@ -95,7 +133,7 @@ export default async function commonRoutes(fastify) {
         message: "Profile Updated Successfully",
       });
     } catch (error) {
-      console.log(error);
+      console.error("❌ Error updating profile:", error);
       return res.code(500).send({ success: false, error: error.message || error });
     }
   });

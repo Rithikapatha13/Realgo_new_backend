@@ -1,4 +1,5 @@
 import authMiddleware from "../middlewares/auth.middleware.js";
+import XLSX from "xlsx";
 
 export default async function userRoutes(fastify) {
     fastify.addHook("preHandler", authMiddleware);
@@ -187,12 +188,12 @@ export default async function userRoutes(fastify) {
                 username: body.username,
                 email: body.email,
                 phone: body.phone,
-                alternativePhone: body.alternativePhone,
-                address: body.address,
+                alternativePhone: body.alternativePhone || body.alternativePhone,
+                addressLine: body.addressLine || body.address,
                 city: body.city,
                 state: body.state,
                 country: body.country,
-                zipCode: body.zipCode,
+                pinCode: body.pinCode || body.zipCode,
                 status: body.status || "PENDING",
                 roleId: body.roleId || body.role,
                 image: body.image || body.img,
@@ -200,10 +201,20 @@ export default async function userRoutes(fastify) {
                 teamHeadId: body.referId || body.refer_id || body.teamHeadId || body.team_head_id || null,
                 companyId: companyId,
                 createdById: req.user.userId,
-                dob: body.dob ? new Date(body.dob) : null,
+                dob: (body.dob && !isNaN(new Date(body.dob).getTime())) ? new Date(body.dob) : null,
                 gender: body.gender,
                 bloodGroup: body.bloodGroup,
-                designation: body.designation,
+                position: body.designation,
+                aadharNo: body.aadharNo,
+                panNo: body.panNo,
+                bankName: body.bankName,
+                branch: body.branch,
+                bankAccountNo: body.bankAccountNo,
+                accountHolder: body.accountHolder,
+                ifsc: body.ifsc,
+                nomineeName: body.nomineeName,
+                nomineePhone: body.nomineePhone,
+                nomineeRelation: body.nomineeRelation,
             };
 
 
@@ -245,7 +256,10 @@ export default async function userRoutes(fastify) {
             return reply.send({ success: true, message: "User saved successfully", data: user });
         } catch (err) {
             req.log.error(err);
-            return reply.code(500).send({ success: false, message: "Internal server error" });
+            const message = err.code === 'P2002' 
+                ? `Conflict: ${err.meta?.target || 'Unique constraint failed'}` 
+                : (err.message || "Internal server error");
+            return reply.code(500).send({ success: false, message });
         }
     });
 
@@ -272,6 +286,81 @@ export default async function userRoutes(fastify) {
         } catch (err) {
             req.log.error(err);
             return reply.code(500).send({ success: false, message: "Internal server error" });
+        }
+    });
+
+    // ==========================================
+    // BULK UPLOAD ASSOCIATES
+    // ==========================================
+    fastify.post("/associates/bulk", async (req, reply) => {
+        try {
+            const data = await req.file();
+            if (!data) return reply.code(400).send({ success: false, message: "No file uploaded" });
+
+            const buffer = await data.toBuffer();
+            const workbook = XLSX.read(buffer, { type: "buffer" });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(sheet);
+
+            if (!rows.length) return reply.code(400).send({ success: false, message: "File is empty" });
+
+            const companyId = req.user.companyId;
+            let successCount = 0;
+            const bcrypt = await import("bcrypt");
+
+            for (const row of rows) {
+                const firstName = row.firstName || row.FirstName || row.name || row.Name;
+                const phone = String(row.phone || row.Phone || row.contact || row.Contact || "");
+
+                // Skip if mandatory fields are missing
+                if (!firstName || !phone) continue;
+
+                // Check phone uniqueness
+                const exists = await fastify.prisma.user.findFirst({ where: { phone, companyId } });
+                if (exists) continue;
+
+                // Generate User Auth ID
+                const userAuthId = `G-${Date.now().toString().slice(-6)}`;
+                
+                // Password handling
+                const rawPassword = row.password || row.Password || "Realgo@123";
+                const hashedPassword = await bcrypt.hash(rawPassword, 10);
+                
+                // Username fallback
+                const lastName = row.lastName || row.LastName || "";
+                let username = row.username || row.Username || `${firstName}${lastName}`.toLowerCase().replace(/\s+/g, '');
+                
+                // Check if username exists, if so append random to it
+                const usernameExists = await fastify.prisma.user.findFirst({ where: { username, companyId } });
+                if (usernameExists) {
+                    username = `${username}${Math.floor(Math.random() * 1000)}`;
+                }
+
+                await fastify.prisma.user.create({
+                    data: {
+                        firstName,
+                        lastName,
+                        username,
+                        phone,
+                        email: row.email || row.Email || null,
+                        password: hashedPassword,
+                        passwordChanged: false,
+                        userAuthId,
+                        roleId: row.roleId || row.RoleId || null,
+                        referId: row.teamHeadId || row.referId || req.user.id,
+                        teamHeadId: row.teamHeadId || row.referId || req.user.id,
+                        status: "PENDING",
+                        companyId,
+                        createdById: req.user.userId, // Matches string to the auth user
+                    }
+                });
+                successCount++;
+            }
+
+            return reply.send({ success: true, count: successCount });
+        } catch (err) {
+            req.log.error(err);
+            return reply.code(500).send({ success: false, message: "Batch processing failed" });
         }
     });
 
@@ -317,7 +406,7 @@ export default async function userRoutes(fastify) {
     // POST /reset-password - Reset Associate password
     fastify.post("/reset-password", async (req, reply) => {
         try {
-            const { id, password } = req.body;
+            const { id, password = "Realgo@123" } = req.body;
             const bcrypt = await import("bcrypt");
 
             const hashedPassword = await bcrypt.hash(password, 10);
