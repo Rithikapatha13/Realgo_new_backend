@@ -103,7 +103,7 @@ export default async function performanceRoutes(fastify) {
 
             // Aggregate Transaction Summary
             const accountSummary = transactions.reduce((acc, t) => {
-                const type = t.transactionType || 'UNKNOWN';
+                const type = (t.transactionType || 'UNKNOWN').toUpperCase();
                 if (!acc[type]) acc[type] = { type, total: 0, count: 0 };
                 acc[type].total += (t.totalAmount || 0);
                 acc[type].count += 1;
@@ -112,7 +112,7 @@ export default async function performanceRoutes(fastify) {
 
             // Aggregate Daily Trend
             const trendMap = transactions.reduce((acc, t) => {
-                if (t.transactionDate) {
+                if (t.transactionDate && t.transactionDate instanceof Date) {
                    const date = t.transactionDate.toISOString().split('T')[0];
                    acc[date] = (acc[date] || 0) + (t.totalAmount || 0);
                 }

@@ -13,7 +13,7 @@ export default async function crmRoutes(fastify) {
     // =====================================================
     fastify.get("/leads", async (req, reply) => {
         try {
-            const { status, search, today } = req.query;
+            const { status, search, today, fromDate, toDate } = req.query;
             const companyId = req.user.companyId;
             const roleName = (req.user.role?.roleName || "").toUpperCase();
             const userType = (req.user.userType || "").toLowerCase();
@@ -51,11 +51,19 @@ export default async function crmRoutes(fastify) {
                 }
             }
 
-            // 3. Today Filter
+            // 3. Date Filters
             if (today === "true") {
                 const startOfDay = new Date();
                 startOfDay.setHours(0, 0, 0, 0);
-                where.updatedAt = { gte: startOfDay };
+                where.createdAt = { gte: startOfDay };
+            } else if (fromDate || toDate) {
+                where.createdAt = {};
+                if (fromDate) where.createdAt.gte = new Date(fromDate);
+                if (toDate) {
+                    const endOfDay = new Date(toDate);
+                    endOfDay.setHours(23, 59, 59, 999);
+                    where.createdAt.lte = endOfDay;
+                }
             }
 
             // 4. Search Filter
@@ -364,6 +372,43 @@ export default async function crmRoutes(fastify) {
         }
     });
 
+    fastify.get("/leads/recent", async (req, reply) => {
+        try {
+            const companyId = req.user.companyId;
+            const roleName = (req.user.role?.roleName || "").toUpperCase();
+            const userType = (req.user.userType || "").toLowerCase();
+
+            const where = { companyId };
+
+            const isTC = userType === "telecaller";
+            const isAdminTC = userType === "admin" && roleName === "TELECALLER ADMIN";
+            const isAdmin = (userType === "admin" || userType === "clientadmin" || userType === "superadmin") && !isAdminTC;
+
+            if (isTC) {
+                where.dedicatedTCId = req.user.id;
+            } else if (isAdminTC) {
+                where.adminTCId = req.user.id;
+            } else if (!isAdmin) {
+                where.associateId = req.user.id;
+            }
+
+            const leads = await prisma.lead.findMany({
+                where,
+                include: {
+                    user: { select: { username: true } },
+                    associate: { select: { firstName: true, lastName: true } }
+                },
+                orderBy: { createdAt: "desc" },
+                take: 10
+            });
+
+            return reply.send({ success: true, leads });
+        } catch (err) {
+            req.log.error(err);
+            return reply.code(500).send({ success: false, message: "Internal server error" });
+        }
+    });
+
     // =====================================================
     // LIVE ACTIVITY STREAM
     // =====================================================
@@ -524,6 +569,44 @@ export default async function crmRoutes(fastify) {
         } catch (err) {
             req.log.error(err);
             return reply.code(500).send({ success: false, message: "History load error" });
+        }
+    });
+
+    // =====================================================
+    // GET ASSIGNABLES (Telecallers and Associates for dropdowns)
+    // =====================================================
+    fastify.get("/assignables", async (req, reply) => {
+        try {
+            const companyId = req.user.companyId;
+
+            // 1. Fetch Admins with Telecaller role
+            const tcs = await prisma.admin.findMany({
+                where: { 
+                    companyId,
+                    role: { roleName: { contains: "TELECALLER", mode: "insensitive" } },
+                    status: "ACTIVE"
+                },
+                select: { id: true, firstName: true, lastName: true }
+            });
+
+            // 2. Fetch Associates (Users)
+            const associates = await prisma.user.findMany({
+                where: { 
+                    companyId,
+                    status: "ACTIVE"
+                },
+                select: { id: true, firstName: true, lastName: true }
+            });
+
+            return reply.send({ 
+                success: true, 
+                telecallers: tcs.map(t => ({ id: t.id, name: `${t.firstName} ${t.lastName}` })),
+                associates: associates.map(a => ({ id: a.id, name: `${a.firstName} ${a.lastName}` }))
+            });
+
+        } catch (err) {
+            req.log.error(err);
+            return reply.code(500).send({ success: false, message: "Failed to fetch assignables" });
         }
     });
 

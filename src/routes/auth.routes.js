@@ -15,10 +15,19 @@ export default async function authRoutes(fastify) {
       });
     }
 
+    // NORMALIZE PHONE: Handle both +91 and raw 10 digits
+    const cleanPhone = phone.replace(/\D/g, "");
+    const phoneVariants = [
+      phone,
+      cleanPhone,
+      `+91${cleanPhone}`,
+      cleanPhone.slice(-10)
+    ].filter(Boolean);
+
     try {
       // Super Admin
       const superAdmin = await fastify.prisma.superAdmin.findFirst({
-        where: { phone },
+        where: { phone: { in: phoneVariants } },
       });
 
       if (superAdmin) {
@@ -30,7 +39,7 @@ export default async function authRoutes(fastify) {
 
       // Client Admin (Owner)
       const clientAdmin = await fastify.prisma.clientAdmin.findMany({
-        where: { phone },
+        where: { phone: { in: phoneVariants } },
         select: {
           id: true,
           firstName: true,
@@ -51,7 +60,7 @@ export default async function authRoutes(fastify) {
 
       // Admin (Staff/Leaders)
       const admin = await fastify.prisma.admin.findMany({
-        where: { phone },
+        where: { phone: { in: phoneVariants } },
         select: {
           id: true,
           firstName: true,
@@ -73,7 +82,7 @@ export default async function authRoutes(fastify) {
 
       // Telecaller (Dedicated Table)
       const telecallers = await fastify.prisma.telecaller.findMany({
-        where: { phone },
+        where: { phone: { in: phoneVariants } },
         select: {
           id: true,
           firstName: true,
@@ -94,7 +103,7 @@ export default async function authRoutes(fastify) {
 
       // User (multi-company)
       const users = await fastify.prisma.user.findMany({
-        where: { phone },
+        where: { phone: { in: phoneVariants } },
         select: {
           id: true,
           firstName: true,
@@ -148,9 +157,17 @@ export default async function authRoutes(fastify) {
       let authUser = null;
       let userType = null;
 
+      const cleanPhone = phone.replace(/\D/g, "");
+      const phoneVariants = [
+        phone,
+        cleanPhone,
+        `+91${cleanPhone}`,
+        cleanPhone.slice(-10)
+      ].filter(Boolean);
+
       // ---------------- SUPER ADMIN ----------------
       authUser = await fastify.prisma.superAdmin.findFirst({
-        where: { phone },
+        where: { phone: { in: phoneVariants } },
       });
 
       if (authUser) {
@@ -167,7 +184,7 @@ export default async function authRoutes(fastify) {
         }
 
         authUser = await fastify.prisma.clientAdmin.findFirst({
-          where: { phone, companyId },
+          where: { phone: { in: phoneVariants }, companyId },
           include: {
             company: {
               select: {
@@ -189,7 +206,7 @@ export default async function authRoutes(fastify) {
           }; // Map virtual role
         } else {
           authUser = await fastify.prisma.admin.findFirst({
-            where: { phone, companyId },
+            where: { phone: { in: phoneVariants }, companyId },
             include: {
               company: {
                 select: {
@@ -215,7 +232,7 @@ export default async function authRoutes(fastify) {
         } else if (!authUser) {
           // ---------------- TELECALLER (Dedicated Table) ----------------
           authUser = await fastify.prisma.telecaller.findFirst({
-            where: { phone, companyId },
+            where: { phone: { in: phoneVariants }, companyId },
             include: {
               company: {
                 select: {
@@ -240,7 +257,7 @@ export default async function authRoutes(fastify) {
           } else {
             // ---------------- USER (Associates) ----------------
             authUser = await fastify.prisma.user.findFirst({
-              where: { phone, companyId },
+              where: { phone: { in: phoneVariants }, companyId },
               include: {
                 company: {
                   select: {
@@ -366,9 +383,9 @@ export default async function authRoutes(fastify) {
 
 
   // =====================================================
-  // CHANGE PASSWORD
+  // CHANGE PASSWORD (Support both hyphen and underscore)
   // =====================================================
-  fastify.post("/change-password", async (req, res) => {
+  const changePasswordHandler = async (req, res) => {
     const { phone, companyId, oldPassword, newPassword } = req.body;
 
     if (!phone || !companyId || !newPassword) {
@@ -378,16 +395,24 @@ export default async function authRoutes(fastify) {
       });
     }
 
+    // NORMALIZE PHONE
+    const cleanPhone = phone.replace(/\D/g, "");
+    const phoneVariants = [
+      phone,
+      cleanPhone,
+      `+91${cleanPhone}`,
+      cleanPhone.slice(-10)
+    ].filter(Boolean);
+
     try {
       /* =========================
        1️⃣ CHECK ADMIN FIRST
     ========================== */
       const admin = await fastify.prisma.admin.findFirst({
-        where: { phone, companyId },
+        where: { phone: { in: phoneVariants }, companyId },
       });
 
       if (admin) {
-        // If old password provided, verify it first
         if (oldPassword) {
           const isOldPasswordValid = await comparePassword(oldPassword, admin.password);
           if (!isOldPasswordValid) {
@@ -413,10 +438,10 @@ export default async function authRoutes(fastify) {
       }
 
       /* =========================
-       1.5 CHECK CLIENT ADMIN
+       2️⃣ CHECK CLIENT ADMIN
     ========================== */
       const clientAdmin = await fastify.prisma.clientAdmin.findFirst({
-        where: { phone, companyId },
+        where: { phone: { in: phoneVariants }, companyId },
       });
 
       if (clientAdmin) {
@@ -445,10 +470,42 @@ export default async function authRoutes(fastify) {
       }
 
       /* =========================
-       2️⃣ FALLBACK TO USER
+       3️⃣ CHECK TELECALLER
+    ========================== */
+      const telecaller = await fastify.prisma.telecaller.findFirst({
+        where: { phone: { in: phoneVariants }, companyId },
+      });
+
+      if (telecaller) {
+        if (oldPassword) {
+          const isOldPasswordValid = await comparePassword(oldPassword, telecaller.password);
+          if (!isOldPasswordValid) {
+            return res.code(401).send({ success: false, message: "Current password is incorrect" });
+          }
+        }
+
+        const hashedPassword = await hashPassword(newPassword);
+
+        await fastify.prisma.telecaller.update({
+          where: { id: telecaller.id },
+          data: {
+            password: hashedPassword,
+            passwordChanged: true,
+          },
+        });
+
+        return res.send({
+          success: true,
+          message: "Password changed successfully! Please login with your new password.",
+          role: "telecaller",
+        });
+      }
+
+      /* =========================
+       4️⃣ FALLBACK TO USER (Associate)
     ========================== */
       const user = await fastify.prisma.user.findFirst({
-        where: { phone, companyId },
+        where: { phone: { in: phoneVariants }, companyId },
       });
 
       if (!user) {
@@ -458,7 +515,6 @@ export default async function authRoutes(fastify) {
         });
       }
 
-      // If old password provided, verify it first
       if (oldPassword) {
         const isOldPasswordValid = await comparePassword(oldPassword, user.password);
         if (!isOldPasswordValid) {
@@ -488,5 +544,8 @@ export default async function authRoutes(fastify) {
         message: "Internal server error",
       });
     }
-  });
+  };
+
+  fastify.post("/change-password", changePasswordHandler);
+  fastify.post("/change_password", changePasswordHandler);
 }
