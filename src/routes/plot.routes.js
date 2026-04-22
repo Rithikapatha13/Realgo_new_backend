@@ -406,4 +406,56 @@ export async function plotRoutes(fastify) {
             return res.code(500).send({ success: false, message: "Error fetching phases" });
         }
     });
+
+    // ===================== GET /api/plots-map-data/:projectId =====================
+    fastify.get("/plots-map-data/:projectId", { preHandler: authMiddleware }, async (req, res) => {
+        try {
+            const { projectId } = req.params;
+            const { companyId } = req.user;
+
+            const [items, counts] = await Promise.all([
+                fastify.prisma.plot.findMany({
+                    where: { projectId, companyId },
+                    select: {
+                        plotNumber: true,
+                        status: true,
+                        facing: true,
+                        sqrYards: true,
+                        customerName: true,
+                    },
+                }),
+                fastify.prisma.plot.groupBy({
+                    by: ["status"],
+                    where: { projectId, companyId },
+                    _count: true,
+                }),
+            ]);
+
+            const stats = {
+                availableCount: 0,
+                bookedCount: 0,
+                registeredCount: 0,
+                holdCount: 0,
+            };
+
+            counts.forEach((c) => {
+                if (c.status === "AVAILABLE") stats.availableCount = c._count;
+                if (c.status === "BOOKED") stats.bookedCount = c._count;
+                if (c.status === "REGISTERED") stats.registeredCount = c._count;
+                if (c.status === "HOLD") stats.holdCount = c._count;
+            });
+
+            return {
+                success: true,
+                data: {
+                    items,
+                    ...stats,
+                },
+                status: 200,
+            };
+        } catch (error) {
+            fastify.log.error(error);
+            return res.code(500).send({ success: false, message: "Error fetching plots map data" });
+        }
+    });
 }

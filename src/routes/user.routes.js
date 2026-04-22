@@ -7,8 +7,24 @@ export default async function userRoutes(fastify) {
     fastify.get("/names", async (req, reply) => {
         try {
             const { companyId } = req.user;
+            const { role, search } = req.query;
+
+            const where = { companyId };
+
+            if (role) {
+                where.role = { roleName: { equals: role, mode: 'insensitive' } };
+            }
+
+            if (search) {
+                where.OR = [
+                    { username: { contains: search, mode: 'insensitive' } },
+                    { firstName: { contains: search, mode: 'insensitive' } },
+                    { lastName: { contains: search, mode: 'insensitive' } },
+                ];
+            }
+
             const users = await fastify.prisma.user.findMany({
-                where: { companyId },
+                where,
                 select: {
                     id: true,
                     username: true,

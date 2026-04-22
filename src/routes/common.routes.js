@@ -2,6 +2,8 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import crypto from "crypto";
 import { s3 } from "../utils/aws.js";
+import authMiddleware from "../middlewares/auth.middleware.js";
+
 
 export default async function commonRoutes(fastify) {
   fastify.post("/presigned-url", async (req, res) => {
@@ -123,4 +125,106 @@ export default async function commonRoutes(fastify) {
       return res.code(500).send({ error: error.message });
     }
   });
+
+  // GET /api/common/home-stats - Consolidated endpoint for Home Page
+  fastify.get("/home-stats", { preHandler: [authMiddleware] }, async (req, reply) => {
+    try {
+      const { companyId, userId } = req.user;
+      const { projectId } = req.query;
+
+      const [
+        totalAdmins,
+        totalUsers,
+        totalProjects,
+        totalLeads,
+        projects,
+        plotStats,
+        news,
+        pendingAssociates,
+        followUps
+      ] = await Promise.all([
+        // 1. Total Admins
+        fastify.prisma.admin.count({ where: { companyId } }),
+
+        // 2. Total Users (Associates/Telecallers)
+        fastify.prisma.user.count({ where: { companyId } }),
+
+        // 3. Total Projects
+        fastify.prisma.project.count({ where: { companyId } }),
+
+        // 4. Total Leads
+        fastify.prisma.lead.count({ where: { companyId } }),
+
+
+        // 5. Project List for Dropdown
+        fastify.prisma.project.findMany({
+          where: { companyId },
+          select: { id: true, projectName: true },
+          orderBy: { projectName: 'asc' }
+        }),
+
+        // 6. Plot Stats by Status (Filtered by Project if provided)
+        fastify.prisma.plot.groupBy({
+          by: ['status'],
+          where: { 
+            companyId,
+            projectId: projectId || undefined 
+          },
+          _count: { _all: true }
+        }),
+
+        // 7. Latest News
+        fastify.prisma.news.findMany({
+          where: { companyId },
+          take: 3,
+          orderBy: { createdAt: 'desc' }
+        }),
+
+        // 8. Pending Associates
+        fastify.prisma.user.findMany({
+          where: { companyId, status: 'PENDING' },
+          take: 3,
+          orderBy: { createdAt: 'desc' }
+        }),
+
+        // 9. My Follow-ups
+        fastify.prisma.followUp.findMany({
+          where: { userId },
+          take: 2,
+          orderBy: { date: 'asc' }
+        })
+      ]);
+
+      // Formatted Plot Stats
+      const plots = {
+        total: plotStats.reduce((acc, curr) => acc + curr._count._all, 0),
+        available: plotStats.find(s => s.status === 'AVAILABLE')?._count._all || 0,
+        booked: plotStats.find(s => s.status === 'BOOKED')?._count._all || 0,
+        registered: plotStats.find(s => s.status === 'REGISTERED')?._count._all || 0,
+        hold: plotStats.find(s => s.status === 'HOLD')?._count._all || 0,
+      };
+
+      return reply.send({
+        success: true,
+        data: {
+          summary: {
+            totalAdmins,
+            totalUsers,
+            totalProjects,
+            totalLeads,
+            plots
+          },
+          projects,
+          news,
+          pendingAssociates,
+          followUps
+        }
+      });
+
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send({ success: false, message: "Internal server error" });
+    }
+  });
 }
+
