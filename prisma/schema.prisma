@@ -76,6 +76,7 @@ model User {
   mustChangePassword Boolean   @default(true)
   lastLoginAt        DateTime?
   lastActiveAt       DateTime?
+  performanceScore   Float     @default(0)
 
   // Relations for Leadflow Trackers
   telecallerLeads Lead[]     @relation("UserLeadsTC")
@@ -209,6 +210,7 @@ model Telecaller {
   mustChangePassword Boolean   @default(true)
   lastLoginAt        DateTime?
   lastActiveAt       DateTime?
+  performanceScore   Float     @default(0)
 
   @@index([companyId])
   @@index([roleId])

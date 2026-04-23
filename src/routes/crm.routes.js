@@ -74,17 +74,24 @@ export default async function crmRoutes(fastify) {
                 ];
             }
 
-            const leads = await prisma.lead.findMany({
+            const leadsData = await prisma.lead.findMany({
                 where,
                 include: {
                     dedicatedTC: { select: { id: true, firstName: true, lastName: true, image: true } },
                     adminTC: { select: { id: true, firstName: true, lastName: true, image: true } },
-                    telecaller: { select: { id: true, firstName: true, lastName: true } }, // Legacy include for names
+                    telecaller: { select: { id: true, firstName: true, lastName: true } },
                     associate: { select: { id: true, firstName: true, lastName: true, image: true } },
-                    callLogs: { select: { id: true, callbackAt: true } }
+                    _count: {
+                        select: { callLogs: true, meetings: true }
+                    }
                 },
                 orderBy: { updatedAt: "desc" }
             });
+
+            const leads = leadsData.map(l => ({
+                ...l,
+                interactionCount: l._count.callLogs + l._count.meetings
+            }));
 
             return reply.send({ success: true, leads });
 
@@ -230,9 +237,32 @@ export default async function crmRoutes(fastify) {
                 });
             }
 
-            // Escalate to Associate Flow B
-            /* If Telecaller marked HOT, they generally then escalate. 
-               This can be done here or in a targeted /assign handler. */
+            // Escalate to Associate (Auto-Assignment for HOT leads)
+            if (!isAssociateUpdate && !isAssociate && status === "HOT" && !lead.associateId) {
+                const associates = await prisma.user.findMany({
+                    where: {
+                        companyId,
+                        status: "VERIFIED",
+                        isOnline: true
+                    },
+                    include: {
+                        _count: {
+                            select: { associateLeads: true }
+                        }
+                    }
+                });
+
+                if (associates.length > 0) {
+                    associates.sort((a, b) => a._count.associateLeads - b._count.associateLeads);
+                    const selected = associates[0];
+
+                    lead = await prisma.lead.update({
+                        where: { id },
+                        data: { associateId: selected.id },
+                        include: { associate: { select: { id: true, firstName: true, lastName: true } } }
+                    });
+                }
+            }
 
             return reply.send({ success: true, lead });
 
@@ -528,6 +558,83 @@ export default async function crmRoutes(fastify) {
     });
 
     // =====================================================
+    // LOG MEETING (Associate)
+    // =====================================================
+    fastify.post("/leads/:id/meeting", async (req, reply) => {
+        try {
+            const { id } = req.params;
+            const { outcome, notes, meetingDate, interested, bookingStatus, followUpDate } = req.body;
+            const companyId = req.user.companyId;
+
+            let lead = await prisma.lead.findUnique({ where: { id } });
+            if (!lead || lead.companyId !== companyId) {
+                return reply.code(404).send({ success: false, message: "Lead not found" });
+            }
+
+            const meeting = await prisma.meeting.create({
+                data: {
+                    leadId: id,
+                    associateId: req.user.id,
+                    outcome,
+                    notes,
+                    meetingDate: meetingDate ? new Date(meetingDate) : null,
+                    interested,
+                    bookingStatus,
+                    followUpDate: followUpDate ? new Date(followUpDate) : null
+                }
+            });
+
+            // Update lead's assocStatus
+            await prisma.lead.update({
+                where: { id },
+                data: { 
+                    assocStatus: outcome,
+                    notes: notes || undefined 
+                }
+            });
+
+            return reply.send({ success: true, meeting });
+        } catch (err) {
+            req.log.error(err);
+            return reply.code(500).send({ success: false, message: "Failed to log meeting" });
+        }
+    });
+
+    fastify.get("/meetings/recent", async (req, reply) => {
+        try {
+            const companyId = req.user.companyId;
+            const roleName = (req.user.role?.roleName || "").toUpperCase();
+            const userType = (req.user.userType || "").toLowerCase();
+
+            const where = { lead: { companyId } };
+
+            const isTC = userType === "telecaller";
+            const isAdminTC = userType === "admin" && roleName === "TELECALLER ADMIN";
+            const isAdmin = (userType === "admin" || userType === "clientadmin" || userType === "superadmin") && !isAdminTC;
+
+            if (!isAdmin) {
+                // If not admin, only show meetings logged by this associate
+                where.associateId = req.user.id;
+            }
+
+            const meetings = await prisma.meeting.findMany({
+                where,
+                include: {
+                    lead: { select: { leadName: true, leadContact: true } },
+                    associate: { select: { firstName: true, lastName: true } }
+                },
+                orderBy: { createdAt: "desc" },
+                take: 10
+            });
+
+            return reply.send({ success: true, meetings });
+        } catch (err) {
+            req.log.error(err);
+            return reply.code(500).send({ success: false, message: "Internal server error" });
+        }
+    });
+
+    // =====================================================
     // GET LEAD INTERACTION HISTORY
     // =====================================================
     fastify.get("/leads/:id/history", async (req, reply) => {
@@ -539,7 +646,15 @@ export default async function crmRoutes(fastify) {
                 where: { id },
                 include: {
                     callLogs: {
-                        include: { telecaller: { select: { firstName: true, lastName: true } } },
+                        include: { 
+                            dedicatedTC: { select: { firstName: true, lastName: true } },
+                            adminTC: { select: { firstName: true, lastName: true } },
+                            telecaller: { select: { firstName: true, lastName: true } }
+                        },
+                        orderBy: { createdAt: "desc" }
+                    },
+                    meetings: {
+                        include: { associate: { select: { firstName: true, lastName: true } } },
                         orderBy: { createdAt: "desc" }
                     }
                 }
@@ -549,10 +664,6 @@ export default async function crmRoutes(fastify) {
                 return reply.code(404).send({ success: false, message: "Lead not found" });
             }
 
-            // Realgo architecture doesn't have a separate Meeting table yet, 
-            // but we can mock or use a future meetings collection if needed.
-            // For now, we return call logs which represent the primary interaction history.
-
             return reply.send({ 
                 success: true, 
                 lead: { name: lead.leadName, phone: lead.leadContact },
@@ -561,9 +672,15 @@ export default async function crmRoutes(fastify) {
                     createdAt: c.createdAt,
                     status: c.status,
                     notes: c.notes,
-                    telecaller: { name: `${c.telecaller.firstName} ${c.telecaller.lastName}` }
+                    telecaller: { name: (c.dedicatedTC?.firstName || c.adminTC?.firstName || c.telecaller?.firstName || "System") }
                 })),
-                meetings: [] // Placeholder for future expansion
+                meetings: lead.meetings.map(m => ({
+                    id: m.id,
+                    createdAt: m.createdAt,
+                    outcome: m.outcome,
+                    notes: m.notes,
+                    associate: { name: `${m.associate.firstName} ${m.associate.lastName}` }
+                }))
             });
 
         } catch (err) {
