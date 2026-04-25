@@ -1,14 +1,29 @@
+import authMiddleware from "../middlewares/auth.middleware.js";
 
-export default async function siteVisitRoutes(fastify) {
+export const siteVisitRoutes = async (fastify, options) => {
+  fastify.addHook("preHandler", authMiddleware);
+
   // GET all site visits with search and pagination
   fastify.get("/site-visits", async (req, res) => {
     try {
+      const companyId = req.user.companyId;
       const { search, page = 1, limit = 10, userId } = req.query;
       const skip = (parseInt(page) - 1) * parseInt(limit);
 
       const where = {
         AND: [
-          userId ? { userId } : {},
+          {
+            OR: [
+              { user: { companyId } },
+              { telecaller: { companyId } }
+            ]
+          },
+          userId ? {
+            OR: [
+              { userId },
+              { telecallerId: userId }
+            ]
+          } : {},
           search ? {
             OR: [
               { leadName: { contains: search, mode: 'insensitive' } },
@@ -29,7 +44,16 @@ export default async function siteVisitRoutes(fastify) {
               select: {
                 firstName: true,
                 lastName: true,
-                username: true
+                username: true,
+                phone: true,
+              }
+            },
+            telecaller: {
+              select: {
+                firstName: true,
+                lastName: true,
+                username: true,
+                phone: true,
               }
             }
           }
@@ -37,15 +61,23 @@ export default async function siteVisitRoutes(fastify) {
         fastify.prisma.siteVisit.count({ where })
       ]);
 
+      // Flatten the creator info
+      const mappedItems = items.map(item => ({
+        ...item,
+        creator: item.user || item.telecaller || null
+      }));
+
       return res.code(200).send({
         success: true,
-        items,
+        items: mappedItems,
+        data: mappedItems,
         total,
         page: parseInt(page),
-        totalPages: Math.ceil(total / parseInt(limit))
+        totalPages: Math.ceil(total / parseInt(limit)),
+        message: "Site visits fetched successfully"
       });
     } catch (err) {
-      fastify.log.error(err);
+      req.log.error(err);
       return res.code(500).send({ success: false, error: err.message });
     }
   });
@@ -53,6 +85,7 @@ export default async function siteVisitRoutes(fastify) {
   // GET today's site visits
   fastify.get("/site-visits/today", async (req, res) => {
     try {
+      const companyId = req.user.companyId;
       const { userId } = req.query;
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -64,7 +97,16 @@ export default async function siteVisitRoutes(fastify) {
           gte: today,
           lt: tomorrow
         },
-        ...(userId && { userId })
+        OR: [
+          { user: { companyId } },
+          { telecaller: { companyId } }
+        ],
+        ...(userId && { 
+            OR: [
+                { userId },
+                { telecallerId: userId }
+            ]
+        })
       };
 
       const items = await fastify.prisma.siteVisit.findMany({
@@ -74,19 +116,32 @@ export default async function siteVisitRoutes(fastify) {
           user: {
             select: {
               firstName: true,
-              lastName: true
+              lastName: true,
+              phone: true,
+            }
+          },
+          telecaller: {
+            select: {
+              firstName: true,
+              lastName: true,
+              phone: true,
             }
           }
         }
       });
 
+      const mappedItems = items.map(item => ({
+        ...item,
+        creator: item.user || item.telecaller || null
+      }));
+
       return res.code(200).send({
         success: true,
-        items,
+        items: mappedItems,
         total: items.length
       });
     } catch (err) {
-      fastify.log.error(err);
+      req.log.error(err);
       return res.code(500).send({ success: false, error: err.message });
     }
   });
@@ -97,16 +152,25 @@ export default async function siteVisitRoutes(fastify) {
       const { id } = req.params;
       const item = await fastify.prisma.siteVisit.findUnique({
         where: { id },
-        include: { user: true }
+        include: { 
+            user: true,
+            telecaller: true
+        }
       });
 
       if (!item) {
         return res.code(404).send({ success: false, message: "Site visit not found" });
       }
 
-      return res.code(200).send({ success: true, item });
+      return res.code(200).send({ 
+          success: true, 
+          item: {
+              ...item,
+              creator: item.user || item.telecaller || null
+          } 
+      });
     } catch (err) {
-      fastify.log.error(err);
+      req.log.error(err);
       return res.code(500).send({ success: false, error: err.message });
     }
   });
@@ -115,6 +179,7 @@ export default async function siteVisitRoutes(fastify) {
   fastify.post("/site-visits", async (req, res) => {
     try {
       const { leadName, phone, date, time, siteVisitPicture, userId } = req.body;
+      const userType = req.user.userType;
 
       if (!leadName || !phone || !date || !time || !userId) {
         return res.code(400).send({ success: false, message: "Missing required fields" });
@@ -127,7 +192,8 @@ export default async function siteVisitRoutes(fastify) {
           date: new Date(date),
           time,
           siteVisitPicture,
-          userId,
+          userId, // Mandatory in schema
+          telecallerId: userType === 'telecaller' ? userId : null,
           changeLog: JSON.stringify([{
             action: 'CREATED',
             at: new Date(),
@@ -138,7 +204,7 @@ export default async function siteVisitRoutes(fastify) {
 
       return res.code(201).send({ success: true, item, message: "Site visit created successfully" });
     } catch (err) {
-      fastify.log.error(err);
+      req.log.error(err);
       return res.code(500).send({ success: false, error: err.message });
     }
   });
@@ -179,7 +245,7 @@ export default async function siteVisitRoutes(fastify) {
 
       return res.code(200).send({ success: true, item, message: "Site visit updated successfully" });
     } catch (err) {
-      fastify.log.error(err);
+      req.log.error(err);
       return res.code(500).send({ success: false, error: err.message });
     }
   });
@@ -191,8 +257,8 @@ export default async function siteVisitRoutes(fastify) {
       await fastify.prisma.siteVisit.delete({ where: { id } });
       return res.code(200).send({ success: true, message: "Site visit deleted successfully" });
     } catch (err) {
-      fastify.log.error(err);
+      req.log.error(err);
       return res.code(500).send({ success: false, error: err.message });
     }
   });
-}
+};

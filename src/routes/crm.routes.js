@@ -138,6 +138,8 @@ export default async function crmRoutes(fastify) {
             let telecallerId = null;
             let associateId = null;
 
+            const isTC = userType === "telecaller";
+            const isAdminTC = userType === "admin" && roleName === "TELECALLER ADMIN";
             const isTelecaller = roleName === "TELECALLER";
             const isAdmin = userType === "admin" || userType === "clientadmin" || userType === "superadmin";
 
@@ -181,7 +183,7 @@ export default async function crmRoutes(fastify) {
 
         } catch (err) {
             req.log.error(err);
-            return reply.code(500).send({ success: false, message: "Internal server error" });
+            return reply.code(500).send({ success: false, message: "Internal server error", error: err.message, stack: err.stack });
         }
     });
 
@@ -710,7 +712,7 @@ export default async function crmRoutes(fastify) {
             const associates = await prisma.user.findMany({
                 where: { 
                     companyId,
-                    status: "ACTIVE"
+                    status: "VERIFIED"
                 },
                 select: { id: true, firstName: true, lastName: true }
             });

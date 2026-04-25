@@ -376,6 +376,8 @@ export default async function authRoutes(fastify) {
       return res.code(500).send({
         success: false,
         message: "Internal server error",
+        error: error.message,
+        stack: error.stack
       });
     }
   });
