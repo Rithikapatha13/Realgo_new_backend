@@ -41,9 +41,10 @@ export default async function performanceRoutes(fastify) {
                 transactions,
                 callLogs,
                 meetings,
-                requests
+                requests,
+                networkStats
             ] = await Promise.all([
-                // 1. Accounts Performance (Transactions)
+                // 1. Accounts Performance
                 prisma.transaction.findMany({
                     where: {
                         companyId,
@@ -52,7 +53,7 @@ export default async function performanceRoutes(fastify) {
                     },
                 }),
 
-                // 2. Telecaller Performance (Call Logs)
+                // 2. Telecaller Performance
                 prisma.callLog.findMany({
                     where: {
                         createdAt: { gte: last30Days },
@@ -70,7 +71,7 @@ export default async function performanceRoutes(fastify) {
                     select: { status: true }
                 }),
 
-                // 3. Associate Performance (Meetings/Bookings)
+                // 3. Associate Performance (Meetings)
                 prisma.meeting.findMany({
                     where: {
                         createdAt: { gte: last30Days },
@@ -88,6 +89,15 @@ export default async function performanceRoutes(fastify) {
                         ...(!isPowerRole ? { requestedById: { in: filterUserIds } } : {})
                     },
                     select: { status: true }
+                }),
+
+                // 5. Network Growth (Total Associates)
+                prisma.user.findMany({
+                    where: {
+                        companyId,
+                        role: { roleName: { contains: 'ASSOCIATE', mode: 'insensitive' } }
+                    },
+                    select: { createdAt: true }
                 })
             ]);
 
@@ -123,6 +133,10 @@ export default async function performanceRoutes(fastify) {
                 .sort(([a], [b]) => a.localeCompare(b))
                 .map(([date, amount]) => ({ date, amount }));
 
+            // Network Growth calculation
+            const totalAssociates = networkStats.length;
+            const newAssociates = networkStats.filter(u => u.createdAt >= last30Days).length;
+
             return reply.send({
                 success: true,
                 data: {
@@ -134,7 +148,9 @@ export default async function performanceRoutes(fastify) {
                         summary: getCounts(callLogs, 'status')
                     },
                     associate: {
-                        summary: getCounts(meetings, 'outcome')
+                        summary: getCounts(meetings, 'outcome'),
+                        totalAssociates,
+                        newAssociates
                     },
                     admin: {
                         summary: getCounts(requests, 'status')
@@ -170,7 +186,7 @@ export default async function performanceRoutes(fastify) {
 
             const roleRaw = (req.user.role?.roleName || req.user.role_name || "").toLowerCase().replace(/[\s_-]/g, "");
             const uType   = (req.user.userType || "").toLowerCase().replace(/[\s_-]/g, "");
-            const userId  = req.user.userId || req.user.id;
+            const userId  = req.user.userId;
 
             // Determine if this user can see all telecallers
             const isAdmin =

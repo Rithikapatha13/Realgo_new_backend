@@ -10,7 +10,7 @@ export default async function noteRoutes(fastify) {
         try {
             const { title, description } = req.body;
             const companyId = req.user.companyId;
-            const userId = req.user.id;
+            const userId = req.user.userId;
 
             if (!title) {
                 return reply.code(400).send({ success: false, message: "Title is required" });
@@ -37,7 +37,7 @@ export default async function noteRoutes(fastify) {
         try {
             const { page = 1, size = 10, search } = req.query;
             const companyId = req.user.companyId;
-            const userId = req.user.id;
+            const userId = req.user.userId;
 
             const pageIndex = parseInt(page);
             const pageSize = parseInt(size);
@@ -82,7 +82,7 @@ export default async function noteRoutes(fastify) {
         try {
             const { id } = req.params;
             const companyId = req.user.companyId;
-            const userId = req.user.id;
+            const userId = req.user.userId;
 
             const note = await prisma.note.findUnique({
                 where: { id }
@@ -105,7 +105,7 @@ export default async function noteRoutes(fastify) {
             const { id } = req.params;
             const { title, description } = req.body;
             const companyId = req.user.companyId;
-            const userId = req.user.id;
+            const userId = req.user.userId;
 
             const existingNote = await prisma.note.findUnique({ where: { id } });
 
@@ -130,7 +130,7 @@ export default async function noteRoutes(fastify) {
         try {
             const { id } = req.params;
             const companyId = req.user.companyId;
-            const userId = req.user.id;
+            const userId = req.user.userId;
 
             const existingNote = await prisma.note.findUnique({ where: { id } });
 

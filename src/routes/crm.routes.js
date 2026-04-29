@@ -28,13 +28,13 @@ export default async function crmRoutes(fastify) {
 
             if (isTC) {
                 // Dedicated Telecaller table
-                where.dedicatedTCId = req.user.id;
+                where.dedicatedTCId = req.user.userId;
             } else if (isAdminTC) {
                 // Admin table telecaller
-                where.adminTCId = req.user.id;
+                where.adminTCId = req.user.userId;
             } else if (!isAdmin && !isAccountant) {
                 // Associate
-                where.associateId = req.user.id;
+                where.associateId = req.user.userId;
             }
 
             // 2. Status Filters
@@ -135,29 +135,35 @@ export default async function crmRoutes(fastify) {
             const userType = (req.user.userType || "").toLowerCase();
             const roleName = (req.user.role?.roleName || "").toUpperCase();
             
-            let telecallerId = null;
-            let associateId = null;
-
             const isTC = userType === "telecaller";
             const isAdminTC = userType === "admin" && roleName === "TELECALLER ADMIN";
             const isTelecaller = roleName === "TELECALLER";
             const isAdmin = userType === "admin" || userType === "clientadmin" || userType === "superadmin";
-
-            if (isTelecaller) {
-                telecallerId = req.user.id;
-            } else if (!isAdmin) {
-                // If Manager, GM, or Associate creates it, they are the owner (Flow A)
-                associateId = req.user.id;
-            }
+            const isAssociate = !isAdmin && !isTC && !isAdminTC;
 
             // Fallback for userId if the creator is an Admin (since Lead.userId is mandatory in schema)
-            let creatorUserId = req.user.id;
+            let creatorUserId = null;
             if (isAdmin) {
-                // Find any valid user in this company to satisfied the DB constraint 
-                // Alternatively, this field should be made optional in schema.prisma
                 const fallbackUser = await prisma.user.findFirst({ where: { companyId } });
-                if (fallbackUser) creatorUserId = fallbackUser.id;
+                if (fallbackUser) {
+                    creatorUserId = fallbackUser.id;
+                } else {
+                    return reply.code(400).send({ success: false, message: "No active users found in this company to assign as lead creator." });
+                }
+            } else {
+                creatorUserId = req.user.userId;
             }
+
+            console.log("DEBUG_LEAD_CREATE:", {
+                leadName,
+                leadContact,
+                companyId,
+                creatorUserId,
+                isTC,
+                isAdminTC,
+                isAssociate,
+                isAdmin
+            });
 
             const newLead = await prisma.lead.create({
                 data: {
@@ -168,22 +174,24 @@ export default async function crmRoutes(fastify) {
                     leadSource: leadSource || "OTHER",
                     description,
                     projectInterestedIn,
-                    leadStatus: "NEW", // Leadflow mapping to Realgo
+                    leadStatus: "NEW", 
                     date: new Date(),
-                    companyId,
-                    userId: creatorUserId, 
-                    dedicatedTCId: userType === "telecaller" ? req.user.id : undefined,
-                    adminTCId: userType === "admin" && roleName === "TELECALLER ADMIN" ? req.user.id : undefined,
-                    associateId: !isTC && !isAdminTC && !isAdmin ? req.user.id : undefined,
-                    assignedById: isAdmin ? null : req.user.id
+                    companyId: companyId,
+                    userId: creatorUserId,
+                    dedicatedTCId: isTC ? req.user.userId : null,
+                    adminTCId: isAdminTC ? req.user.userId : null,
+                    associateId: isAssociate ? req.user.userId : null,
+                    assignedById: isAdmin ? null : req.user.userId
                 }
             });
 
             return reply.code(201).send({ success: true, lead: newLead });
 
+            return reply.code(201).send({ success: true, lead: newLead });
+
         } catch (err) {
-            req.log.error(err);
-            return reply.code(500).send({ success: false, message: "Internal server error", error: err.message, stack: err.stack });
+            console.error("LEAD_CREATE_ERROR:", err);
+            return reply.code(500).send({ success: false, message: "Internal server error", error: err.message });
         }
     });
 
@@ -230,8 +238,8 @@ export default async function crmRoutes(fastify) {
                 await prisma.callLog.create({
                     data: {
                         leadId: id,
-                        dedicatedTCId: userType === "telecaller" ? req.user.id : null,
-                        adminTCId: userType === "admin" ? req.user.id : null,
+                        dedicatedTCId: userType === "telecaller" ? req.user.userId : null,
+                        adminTCId: userType === "admin" ? req.user.userId : null,
                         status: status,
                         notes: notes,
                         callbackAt: callbackAt ? new Date(callbackAt) : null
@@ -295,7 +303,7 @@ export default async function crmRoutes(fastify) {
             // In a production app, the frontend should ideally specify, but we can check if it exists in Admin
             let assignData = {
                 associateId: associateId !== undefined ? associateId : undefined,
-                assignedById: isAdmin ? null : req.user.id
+                assignedById: isAdmin ? null : req.user.userId
             };
 
             if (telecallerId !== undefined) {
@@ -340,11 +348,11 @@ export default async function crmRoutes(fastify) {
             const baseWhere = { companyId };
             
             if (isTC) {
-                baseWhere.dedicatedTCId = req.user.id;
+                baseWhere.dedicatedTCId = req.user.userId;
             } else if (isAdminTC) {
-                baseWhere.adminTCId = req.user.id;
+                baseWhere.adminTCId = req.user.userId;
             } else if (isAssociate) {
-                baseWhere.associateId = req.user.id;
+                baseWhere.associateId = req.user.userId;
             }
 
             const [
@@ -417,11 +425,11 @@ export default async function crmRoutes(fastify) {
             const isAdmin = (userType === "admin" || userType === "clientadmin" || userType === "superadmin") && !isAdminTC;
 
             if (isTC) {
-                where.dedicatedTCId = req.user.id;
+                where.dedicatedTCId = req.user.userId;
             } else if (isAdminTC) {
-                where.adminTCId = req.user.id;
+                where.adminTCId = req.user.userId;
             } else if (!isAdmin) {
-                where.associateId = req.user.id;
+                where.associateId = req.user.userId;
             }
 
             const leads = await prisma.lead.findMany({
@@ -461,11 +469,11 @@ export default async function crmRoutes(fastify) {
             const where = { lead: { companyId } };
 
             if (isTC) {
-                where.lead.dedicatedTCId = req.user.id;
+                where.lead.dedicatedTCId = req.user.userId;
             } else if (isAdminTC) {
-                where.lead.adminTCId = req.user.id;
+                where.lead.adminTCId = req.user.userId;
             } else if (isAssociate) {
-                where.lead.associateId = req.user.id;
+                where.lead.associateId = req.user.userId;
             }
 
             const logs = await prisma.callLog.findMany({
@@ -525,7 +533,7 @@ export default async function crmRoutes(fastify) {
                 if (!leadName || !leadContact) continue;
 
                 // Fallback for userId if the creator is an Admin
-                let creatorUserId = req.user.id;
+                let creatorUserId = req.user.userId;
                 const userType = (req.user.userType || "").toLowerCase();
                 const isAdmin = userType === "admin" || userType === "clientadmin" || userType === "superadmin";
 
@@ -576,7 +584,7 @@ export default async function crmRoutes(fastify) {
             const meeting = await prisma.meeting.create({
                 data: {
                     leadId: id,
-                    associateId: req.user.id,
+                    associateId: req.user.userId,
                     outcome,
                     notes,
                     meetingDate: meetingDate ? new Date(meetingDate) : null,
@@ -616,7 +624,7 @@ export default async function crmRoutes(fastify) {
 
             if (!isAdmin) {
                 // If not admin, only show meetings logged by this associate
-                where.associateId = req.user.id;
+                where.associateId = req.user.userId;
             }
 
             const meetings = await prisma.meeting.findMany({

@@ -10,7 +10,7 @@ export default async function reminderRoutes(fastify) {
         try {
             const { type, description, date, time, repeat, selectedDays } = req.body;
             const companyId = req.user.companyId;
-            const userId = req.user.id;
+            const userId = req.user.userId;
 
             if (repeat === 'Weekly' && (!selectedDays || selectedDays.length === 0)) {
                 return reply.code(400).send({
@@ -44,7 +44,7 @@ export default async function reminderRoutes(fastify) {
         try {
             const { page = 1, size = 10, name, type } = req.query;
             const companyId = req.user.companyId;
-            const userId = req.user.id;
+            const userId = req.user.userId;
 
             const pageIndex = parseInt(page);
             const pageSize = parseInt(size);
@@ -89,7 +89,7 @@ export default async function reminderRoutes(fastify) {
     fastify.get("/reminders/today", async (req, reply) => {
         try {
             const companyId = req.user.companyId;
-            const userId = req.user.id;
+            const userId = req.user.userId;
 
             // Date logic from realgo old
             const today = new Date();
@@ -147,7 +147,7 @@ export default async function reminderRoutes(fastify) {
         try {
             const { id } = req.params;
             const companyId = req.user.companyId;
-            const userId = req.user.id;
+            const userId = req.user.userId;
 
             const reminder = await prisma.reminder.findUnique({
                 where: { id }
@@ -169,7 +169,7 @@ export default async function reminderRoutes(fastify) {
         try {
             const { id, type, description, date, time, repeat, selectedDays } = req.body;
             const companyId = req.user.companyId;
-            const userId = req.user.id;
+            const userId = req.user.userId;
 
             const existingReminder = await prisma.reminder.findUnique({ where: { id } });
 
@@ -201,7 +201,7 @@ export default async function reminderRoutes(fastify) {
         try {
             const { id, date, time } = req.body;
             const companyId = req.user.companyId;
-            const userId = req.user.id;
+            const userId = req.user.userId;
 
             const existingReminder = await prisma.reminder.findUnique({ where: { id } });
 
@@ -226,7 +226,7 @@ export default async function reminderRoutes(fastify) {
         try {
             const { id } = req.params;
             const companyId = req.user.companyId;
-            const userId = req.user.id;
+            const userId = req.user.userId;
 
             const existingReminder = await prisma.reminder.findUnique({ where: { id } });
 

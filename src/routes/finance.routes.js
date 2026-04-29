@@ -980,4 +980,41 @@ export async function financeRoutes(fastify) {
             return reply.code(500).send({ success: false, message: "Error generating BRS report" });
         }
     });
+
+    // GET /api/finance/logs - Audit Logs
+    fastify.get("/logs", async (req, reply) => {
+        try {
+            const { companyId } = req.user;
+            const { page = 1, limit = 20, module, action, userId, startDate, endDate } = req.query;
+            const skip = (page - 1) * limit;
+
+            const where = {
+                companyId,
+                ...(module && { module }),
+                ...(action && { action }),
+                ...(userId && { userId }),
+                ...(startDate && endDate && {
+                    createdAt: {
+                        gte: new Date(startDate),
+                        lte: new Date(endDate)
+                    }
+                })
+            };
+
+            const [items, total] = await Promise.all([
+                prisma.financeLog.findMany({
+                    where,
+                    skip: parseInt(skip),
+                    take: parseInt(limit),
+                    orderBy: { createdAt: 'desc' }
+                }),
+                prisma.financeLog.count({ where })
+            ]);
+
+            return reply.send({ success: true, items, total, page: parseInt(page), limit: parseInt(limit) });
+        } catch (err) {
+            fastify.log.error(err);
+            return reply.code(500).send({ success: false, message: "Error fetching audit logs" });
+        }
+    });
 }

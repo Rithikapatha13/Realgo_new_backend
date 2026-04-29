@@ -1,29 +1,14 @@
 import authMiddleware from "../middlewares/auth.middleware.js";
 
 export async function projectRoutes(fastify) {
-    // GET /api/highways - Fetch all highways for the current company
-    fastify.get("/highways", { preHandler: authMiddleware }, async (req, res) => {
-        try {
-            const { companyId } = req.user;
-            const highways = await fastify.prisma.highway.findMany({
-                where: { companyId },
-                orderBy: { highwayName: "asc" },
-            });
-            return { success: true, items: highways, status: 200 };
-        } catch (error) {
-            fastify.log.error(error);
-            return res.code(500).send({ success: false, message: "Error fetching highways" });
-        }
-    });
-
-    // GET /api/projects - Fetch projects filtered by highwayId
+    // GET /api/projects - Fetch projects filtered by projectStatusId
     fastify.get("/projects", { preHandler: authMiddleware }, async (req, res) => {
         try {
             const { companyId } = req.user;
-            const { highwayId, name } = req.query;
+            const { projectStatusId, name } = req.query;
 
             const condition = { companyId };
-            if (highwayId) condition.highwayId = highwayId;
+            if (projectStatusId) condition.projectStatusId = projectStatusId;
             if (name) {
                 condition.projectName = {
                     contains: name,
@@ -34,8 +19,8 @@ export async function projectRoutes(fastify) {
             const projects = await fastify.prisma.project.findMany({
                 where: condition,
                 include: {
-                    highway: {
-                        select: { highwayName: true }
+                    projectStatus: {
+                        select: { statusName: true }
                     }
                 },
                 orderBy: { createdAt: "desc" },
@@ -71,7 +56,7 @@ export async function projectRoutes(fastify) {
             const project = await fastify.prisma.project.findUnique({
                 where: { id },
                 include: {
-                    highway: true
+                    projectStatus: true
                 }
             });
 
@@ -127,7 +112,7 @@ export async function projectRoutes(fastify) {
                 projectWebsiteUrl: body.projectWebsiteUrl,
                 projectImage: body.projectImage,
                 qrCode: body.qrCode,
-                highwayId: body.highwayId,
+                projectStatusId: body.projectStatusId,
                 // Array fields - pass directly for String[] in PostgreSQL
                 sliders: body.sliders,
                 images: body.images,

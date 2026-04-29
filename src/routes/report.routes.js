@@ -22,7 +22,7 @@ export async function reportRoutes(fastify) {
                 if (['admin', 'accounts', 'pro', 'superAdmin'].includes(req.user.role?.roleName)) {
                     userId = null;
                 } else {
-                    userId = req.user.id;
+                    userId = req.user.userId;
                 }
             }
 

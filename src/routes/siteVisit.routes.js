@@ -178,7 +178,7 @@ export const siteVisitRoutes = async (fastify, options) => {
   // POST create site visit
   fastify.post("/site-visits", async (req, res) => {
     try {
-      const { leadName, phone, date, time, siteVisitPicture, userId } = req.body;
+      const { leadName, phone, date, time, siteVisitPicture, userId, projectId } = req.body;
       const userType = req.user.userType;
 
       if (!leadName || !phone || !date || !time || !userId) {
@@ -192,6 +192,7 @@ export const siteVisitRoutes = async (fastify, options) => {
           date: new Date(date),
           time,
           siteVisitPicture,
+          projectId,
           userId, // Mandatory in schema
           telecallerId: userType === 'telecaller' ? userId : null,
           changeLog: JSON.stringify([{
@@ -213,7 +214,7 @@ export const siteVisitRoutes = async (fastify, options) => {
   fastify.put("/site-visits/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const { leadName, phone, date, time, siteVisitPicture, userId } = req.body;
+      const { leadName, phone, date, time, siteVisitPicture, userId, projectId } = req.body;
 
       const existing = await fastify.prisma.siteVisit.findUnique({ where: { id } });
       if (!existing) {
@@ -239,6 +240,7 @@ export const siteVisitRoutes = async (fastify, options) => {
           date: date ? new Date(date) : undefined,
           time,
           siteVisitPicture,
+          projectId,
           changeLog: JSON.stringify(newLog)
         }
       });
@@ -261,4 +263,173 @@ export const siteVisitRoutes = async (fastify, options) => {
       return res.code(500).send({ success: false, error: err.message });
     }
   });
-};
+
+  // ================= VEHICLE ROUTES =================
+
+  // GET all vehicles
+  fastify.get("/vehicles", async (req, res) => {
+    try {
+      const { companyId } = req.user;
+      const items = await fastify.prisma.vehicle.findMany({
+        where: { companyId },
+        orderBy: { vehicleName: 'asc' }
+      });
+      return { success: true, items };
+    } catch (err) {
+      req.log.error(err);
+      return res.code(500).send({ success: false, error: err.message });
+    }
+  });
+
+  // POST create vehicle
+  fastify.post("/vehicles", async (req, res) => {
+    try {
+      const { companyId } = req.user;
+      const item = await fastify.prisma.vehicle.create({
+        data: { ...req.body, companyId }
+      });
+      return { success: true, item };
+    } catch (err) {
+      req.log.error(err);
+      return res.code(500).send({ success: false, error: err.message });
+    }
+  });
+
+  // PUT update vehicle
+  fastify.put("/vehicles/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const item = await fastify.prisma.vehicle.update({
+        where: { id },
+        data: req.body
+      });
+      return { success: true, item };
+    } catch (err) {
+      req.log.error(err);
+      return res.code(500).send({ success: false, error: err.message });
+    }
+  });
+
+  // DELETE vehicle
+  fastify.delete("/vehicles/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await fastify.prisma.vehicle.delete({ where: { id } });
+      return { success: true, message: "Vehicle deleted" };
+    } catch (err) {
+      req.log.error(err);
+      return res.code(500).send({ success: false, error: err.message });
+    }
+  });
+
+  // ================= VEHICLE SITE VISIT ROUTES =================
+
+  // GET all vehicle visits
+  fastify.get("/vehicle-site-visits", async (req, res) => {
+    try {
+      const { companyId } = req.user;
+      const { page = 1, limit = 10, associateId } = req.query;
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+
+      const where = {
+        companyId,
+        ...(associateId && { associateId })
+      };
+
+      const [items, total] = await Promise.all([
+        fastify.prisma.vehicleSiteVisit.findMany({
+          where,
+          skip,
+          take: parseInt(limit),
+          orderBy: { date: 'desc' },
+          include: { vehicle: true }
+        }),
+        fastify.prisma.vehicleSiteVisit.count({ where })
+      ]);
+
+      return { success: true, items, total };
+    } catch (err) {
+      req.log.error(err);
+      return res.code(500).send({ success: false, error: err.message });
+    }
+  });
+
+  // POST create vehicle visit
+  fastify.post("/vehicle-site-visits", async (req, res) => {
+    try {
+      const { companyId } = req.user;
+      const { startKms, endKms } = req.body;
+
+      // KM Validation
+      if (startKms && endKms && parseFloat(endKms) <= parseFloat(startKms)) {
+        return res.code(400).send({ 
+          success: false, 
+          message: "End KM must be greater than Start KM" 
+        });
+      }
+
+      const data = { 
+        ...req.body, 
+        companyId,
+        date: new Date(req.body.date)
+      };
+      const item = await fastify.prisma.vehicleSiteVisit.create({ data });
+      return { success: true, item };
+    } catch (err) {
+      req.log.error(err);
+      return res.code(500).send({ success: false, error: err.message });
+    }
+  });
+
+  // DELETE vehicle visit
+  fastify.delete("/vehicle-site-visits/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await fastify.prisma.vehicleSiteVisit.delete({ where: { id } });
+      return { success: true, message: "Log deleted" };
+    } catch (err) {
+      req.log.error(err);
+      return res.code(500).send({ success: false, error: err.message });
+    }
+  });
+
+  // PATCH approve/reject vehicle visit
+  fastify.patch("/vehicle-site-visits/:id/status", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body; // APPROVED or REJECTED
+      const { id: approvedBy, companyId } = req.user;
+
+      const trip = await fastify.prisma.vehicleSiteVisit.update({
+        where: { id },
+        data: { status, approvedBy },
+        include: { vehicle: true }
+      });
+
+      // If approved, create a corresponding finance expense entry automatically
+      if (status === "APPROVED") {
+        await fastify.prisma.associateExpense.create({
+          data: {
+            associateId: trip.associateId,
+            associateName: trip.associateName,
+            userAuthId: trip.userAuthId || "",
+            teamHeadId: trip.teamHeadId || "",
+            teamHeadName: trip.teamHeadName || "",
+            date: trip.date,
+            expenseType: "SITE_VISIT",
+            siteVisitId: trip.id,
+            amountSpent: trip.totalAmountSpent,
+            description: `Auto-generated from Site Visit (${trip.id})`,
+            companyId,
+            paymentReceipt: trip.paymentReceipt
+          }
+        });
+      }
+
+      return { success: true, item: trip };
+    } catch (err) {
+      req.log.error(err);
+      return res.code(500).send({ success: false, error: err.message });
+    }
+  });
+}

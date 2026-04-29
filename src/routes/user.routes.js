@@ -363,8 +363,8 @@ export default async function userRoutes(fastify) {
                         passwordChanged: false,
                         userAuthId,
                         roleId: row.roleId || row.RoleId || null,
-                        referId: row.teamHeadId || row.referId || req.user.id,
-                        teamHeadId: row.teamHeadId || row.referId || req.user.id,
+                        referId: row.teamHeadId || row.referId || req.user.userId,
+                        teamHeadId: row.teamHeadId || row.referId || req.user.userId,
                         status: "PENDING",
                         companyId,
                         createdById: req.user.userId, // Matches string to the auth user

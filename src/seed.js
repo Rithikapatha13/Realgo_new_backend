@@ -5,36 +5,36 @@ const prisma = new PrismaClient();
 async function main() {
     const companyId = '951fd2ed-13e0-40a5-b47c-f4b43c82089d'; // Active company from my earlier check
 
-    console.log('--- Seeding Highways ---');
-    const highways = [
-        { highwayName: 'Hyderabad - Warangal Highway', highwayIcon: 'icons/warangal.png' },
-        { highwayName: 'Hyderabad - Vijayawada Highway', highwayIcon: 'icons/vijayawada.png' },
-        { highwayName: 'Srisailam Highway', highwayIcon: 'icons/srisailam.png' },
-        { highwayName: 'Bangalore Highway', highwayIcon: 'icons/bangalore.png' },
+    console.log('--- Seeding Project Statuses ---');
+    const statuses = [
+        { statusName: 'Launched', statusIcon: 'icons/launched.png' },
+        { statusName: 'Under Construction', statusIcon: 'icons/construction.png' },
+        { statusName: 'Completed', statusIcon: 'icons/completed.png' },
+        { statusName: 'Sold Out', statusIcon: 'icons/soldout.png' },
     ];
 
-    for (const h of highways) {
-        const highway = await prisma.highway.upsert({
-            where: { id: h.id || 'placeholder-' + h.highwayName },
+    for (const s of statuses) {
+        const status = await prisma.projectStatus.upsert({
+            where: { id: s.id || 'placeholder-' + s.statusName },
             update: {},
             create: {
-                highwayName: h.highwayName,
-                highwayIcon: h.highwayIcon,
+                statusName: s.statusName,
+                statusIcon: s.statusIcon,
                 companyId: companyId,
             },
         });
-        console.log(`Created Highway: ${highway.highwayName} (${highway.id})`);
+        console.log(`Created Project Status: ${status.statusName} (${status.id})`);
 
-        // Create a sample project for each highway
-        console.log(`--- Seeding Project for ${h.highwayName} ---`);
+        // Create a sample project for each status
+        console.log(`--- Seeding Project for ${s.statusName} ---`);
         const project = await prisma.project.create({
             data: {
-                projectName: `${h.highwayName.split(' ')[2] || h.highwayName.split(' ')[0]} Premium Venture`,
-                projectDescription: `A beautiful gated community venture on ${h.highwayName}.`,
-                projectAddress: `Near Regional Ring Road, ${h.highwayName}`,
+                projectName: `${s.statusName} Premium Venture`,
+                projectDescription: `A beautiful gated community venture in ${s.statusName} stage.`,
+                projectAddress: `Near Regional Ring Road, Development Zone`,
                 projectImage: 'projects/sample.jpg',
                 companyId: companyId,
-                highwayId: highway.id,
+                projectStatusId: status.id,
             },
         });
         console.log(`Created Project: ${project.projectName} (${project.id})`);

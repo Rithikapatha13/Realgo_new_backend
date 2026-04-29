@@ -29,6 +29,8 @@ import requestRoutes from "./routes/requests.routes.js";
 import { siteVisitRoutes } from "./routes/siteVisit.routes.js";
 import noteRoutes from "./routes/note.routes.js";
 import reminderRoutes from "./routes/reminder.routes.js";
+import { projectStatusRoutes } from "./routes/projectStatus.routes.js";
+import { associateFinanceRoutes } from "./routes/associateFinance.routes.js";
 
 const app = Fastify({
   logger: true,
@@ -83,6 +85,9 @@ app.register(userRoutes, { prefix: "/api/user" });
 // project route
 app.register(projectRoutes, { prefix: "/api" });
 
+// project status route
+app.register(projectStatusRoutes, { prefix: "/api" });
+
 // team route
 app.register(teamRoutes, { prefix: "/api" });
 
@@ -102,6 +107,7 @@ app.register(requestRoutes, { prefix: "/api" });
 app.register(siteVisitRoutes, { prefix: "/api" });
 app.register(noteRoutes, { prefix: "/api" });
 app.register(reminderRoutes, { prefix: "/api" });
+app.register(associateFinanceRoutes, { prefix: "/api/associate-finance" });
 
 
 // Start server

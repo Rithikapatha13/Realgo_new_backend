@@ -281,7 +281,7 @@ model Company {
   updatedAt          DateTime              @updatedAt
   followUps          FollowUp[]
   galleries          Gallery[]
-  highways           Highway[]
+  projectStatuses    ProjectStatus[]
   news               News[]
   notes              Note[]
   notifications      Notification[]
@@ -308,6 +308,9 @@ model Company {
   chequeDetails      ChequeDetail[]
   financeLogs        FinanceLog[]
   clientAdmins       ClientAdmin[]
+  associateContributions AssociateContribution[]
+  vehicles           Vehicle[]
+  vehicleSiteVisits  VehicleSiteVisit[]
 
   @@index([status])
 }
@@ -445,7 +448,7 @@ model Project {
   videos                 String[]
   locationHighlights     String[]
   companyId              String
-  highwayId              String
+  projectStatusId        String        @map("highwayId")
   latitude               String?
   longitude              String?
   incentivesLevel        Json?
@@ -455,12 +458,13 @@ model Project {
   leads                  Lead[]
   phases                 Phase[]
   plots                  Plot[]
+  siteVisits             SiteVisit[]
   company                Company       @relation(fields: [companyId], references: [id])
-  highway                Highway       @relation(fields: [highwayId], references: [id])
+  projectStatus          ProjectStatus @relation(fields: [projectStatusId], references: [id])
   transactions           Transaction[]
 
   @@index([companyId])
-  @@index([highwayId])
+  @@index([projectStatusId])
 }
 
 model Plot {
@@ -511,10 +515,10 @@ model Plot {
   @@index([plotStatus])
 }
 
-model Highway {
+model ProjectStatus {
   id          String    @id @default(uuid())
-  highwayName String
-  highwayIcon String?
+  statusName  String    @map("highwayName")
+  statusIcon  String?   @map("highwayIcon")
   companyId   String
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -522,7 +526,9 @@ model Highway {
   projects    Project[]
 
   @@index([companyId])
+  @@map("Highway")
 }
+
 
 model Note {
   id              String   @id @default(uuid())
@@ -702,7 +708,11 @@ model SiteVisit {
   date             DateTime
   time             String
   siteVisitPicture String?
+  projectId        String?
+  status           String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  approvedBy       String?
   changeLog        String?
+  project          Project? @relation(fields: [projectId], references: [id])
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   user             User?    @relation("UserSiteVisits", fields: [userId], references: [id])
@@ -1162,4 +1172,134 @@ model Activity {
   createdAt DateTime @default(now())
 
   @@map("activities")
+}
+// ============== ASSOCIATE FINANCE MODULE ==============
+
+model AssociateContribution {
+  id                String             @id @default(uuid())
+  empName           String             @map("emp_name")
+  empId             String             @map("emp_id")
+  empUserAuthId     String             @map("emp_user_auth_id")
+  teamHeadId        String?            @map("team_head_id")
+  projectId         String?            @map("project_id")
+  plotId            String             @map("plot_id")
+  plotNumber        String             @map("plot_number")
+  sqrYards          String             @map("sqr_yards")
+  pricePerSqYard    Int                @map("price_per_sq_yard")
+  plotPrice         String             @map("plot_price")
+  totalAmount       Float              @map("total_amount")
+  soldBy            String?            @map("sold_by")
+  roleId            String?            @map("role")
+  roleName          String             @map("role_name")
+  level             String?
+  saleType          String?            @map("sale_type")
+  companyId         String             @map("company_id")
+  status            ContributionStatus @default(PENDING)
+  manualOverride    Boolean            @default(false) @map("manual_override")
+  overrideReason    String?            @map("override_reason")
+  commissionAmount  Float?             @map("commission_amount")
+  notes             String?
+  payoutDate        DateTime?          @map("payout_date")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  company           Company            @relation(fields: [companyId], references: [id])
+  payouts           AssociatePayout[]
+
+  @@index([empId])
+  @@index([companyId])
+  @@index([plotId])
+}
+
+model AssociateExpense {
+  id              String         @id @default(uuid())
+  associateId     String         @map("associate_id")
+  associateName   String         @map("associate_name")
+  userAuthId      String         @map("user_auth_id")
+  teamHeadName    String         @map("team_head_name")
+  teamHeadId      String         @map("team_head_id")
+  date            DateTime
+  expenseType     String         @map("expense_type")
+  siteVisitId     String?        @map("sitevisit_id")
+  amountSpent     Float          @map("amount_spent")
+  description     String?
+  companyId       String         @map("company_id")
+  paymentReceipt  String?        @map("payment_receipt")
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([associateId])
+  @@index([companyId])
+}
+
+model AssociatePayout {
+  id             String                @id @default(uuid())
+  associateId    String                @map("associate_id")
+  contributionId String?               @map("contribution_id")
+  amountPaid     Float                 @map("amount_paid")
+  payoutDate     DateTime              @map("payout_date")
+  paymentMode    String?               @map("payment_mode")
+  transactionId  String?               @map("transaction_id")
+  notes          String?
+  companyId      String                @map("company_id")
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  contribution   AssociateContribution? @relation(fields: [contributionId], references: [id])
+
+  @@index([associateId])
+  @@index([companyId])
+}
+
+enum ContributionStatus {
+  PAID
+  PENDING
+  REJECT
+  HOLD
+}
+
+model Vehicle {
+  id              String             @id @default(uuid())
+  vehicleName     String
+  vehicleNumber   String
+  vehicleType     String             // Bus, Car, Bike, etc.
+  driverName      String?
+  driverPhone     String?
+  status          String             @default("AVAILABLE") // AVAILABLE, ON_TRIP, MAINTENANCE
+  companyId       String
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  company         Company            @relation(fields: [companyId], references: [id])
+  trips           VehicleSiteVisit[]
+
+  @@index([companyId])
+}
+
+model VehicleSiteVisit {
+  id               String    @id @default(uuid())
+  vehicleId        String?
+  associateId      String
+  associateName    String
+  userAuthId       String?
+  teamHeadName     String?
+  teamHeadId       String?
+  date             DateTime
+  totalAmountSpent Float     @default(0)
+  totalKms         String?
+  startKms         String?
+  endKms           String?
+  projects         Json      // Array of project details
+  status           String    @default("PENDING") // PENDING, APPROVED, COMPLETED, REJECTED
+  financeStatus    String    @default("UNPAID")  // UNPAID, PAID
+  approvedBy       String?
+  paymentReceipt   String?
+  companyId        String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  
+  vehicle          Vehicle?  @relation(fields: [vehicleId], references: [id])
+  company          Company   @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+  @@index([associateId])
 }
