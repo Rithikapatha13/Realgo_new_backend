@@ -62,6 +62,24 @@ export default async function showcaseRoutes(fastify) {
         }
     });
 
+    // PATCH /api/showcases/:id
+    fastify.patch("/showcases/:id", { preHandler: authMiddleware }, async (request, reply) => {
+        try {
+            const { id } = request.params;
+            const { status } = request.body;
+
+            const updated = await prisma.showcase.update({
+                where: { id },
+                data: { status },
+            });
+
+            return reply.send({ success: true, showcase: updated });
+        } catch (error) {
+            fastify.log.error(error);
+            return reply.status(500).send({ success: false, message: "Internal Server Error" });
+        }
+    });
+
     // DELETE /api/showcases/:id
     fastify.delete("/showcases/:id", { preHandler: authMiddleware }, async (request, reply) => {
         try {

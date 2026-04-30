@@ -192,6 +192,7 @@ export default async function authRoutes(fastify) {
                 company: true,
                 primaryColour: true,
                 secondaryColour: true,
+                modules: true,
               },
             },
           },
@@ -201,7 +202,7 @@ export default async function authRoutes(fastify) {
           userType = "clientadmin";
           authUser.role = { 
             roleName: "COMPANY_ADMIN",
-            modules: ["ALL"], // ClientAdmin gets all modules
+            modules: authUser.company?.modules || [], // ClientAdmin uses company modules
             roleNo: 0 
           }; // Map virtual role
         } else {
@@ -214,6 +215,7 @@ export default async function authRoutes(fastify) {
                   company: true,
                   primaryColour: true,
                   secondaryColour: true,
+                  modules: true,
                 },
               },
               role: {
@@ -240,6 +242,7 @@ export default async function authRoutes(fastify) {
                   company: true,
                   primaryColour: true,
                   secondaryColour: true,
+                  modules: true,
                 },
               },
               role: {
@@ -265,6 +268,7 @@ export default async function authRoutes(fastify) {
                     company: true,
                     primaryColour: true,
                     secondaryColour: true,
+                    modules: true,
                   },
                 },
                 role: {
@@ -338,7 +342,10 @@ export default async function authRoutes(fastify) {
         tokenPayload.role = authUser.role;
         tokenPayload.roleId = authUser.roleId;
         tokenPayload.roleNo = authUser.role.roleNo;
-        tokenPayload.roleModules = authUser.role.modules;
+        
+        // Gatekeeper: Intersect Role modules with Company modules to ensure strict restriction
+        const companyModules = authUser.company?.modules || [];
+        tokenPayload.roleModules = authUser.role.modules.filter(m => companyModules.includes(m));
       }
 
       const user = {
@@ -355,7 +362,7 @@ export default async function authRoutes(fastify) {
         teamHeadId: authUser.teamHeadId,
         role: authUser.roleName || authUser.role?.roleName,
         roleId: authUser.roleId,
-        roleModules: authUser.role?.modules || [],
+        roleModules: (authUser.role?.modules || []).filter(m => (authUser.company?.modules || []).includes(m)),
         roleNo: authUser.role?.roleNo || (userType === 'clientadmin' ? 0 : 999),
         userName: authUser.username,
         companyImg: authUser.company?.img,

@@ -53,6 +53,11 @@ model User {
   userAuthId        String?
   teamHeadId        String?
   reasonForReject   String?
+  passwordRequest   Boolean            @default(false)
+  deleteRequest     Boolean            @default(false)
+  messageRequest    String?
+  requesterName     String?
+  requesterId       String?
   status            UserStatus
   passwordChanged   Boolean            @default(false)
   createdAt         DateTime           @default(now())

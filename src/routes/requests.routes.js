@@ -85,17 +85,17 @@ export default async function requestRoutes(fastify) {
       // Map pending users to unified shape
       const pendingAsRequests = includePendingUsers
         ? pendingUsers.map(u => ({
-            id: `user-${u.id}`,
-            requestType: "USER_APPROVAL",
-            status: "PENDING",
-            message: "User awaiting approval",
-            requestedName: `${u.firstName || ""} ${u.lastName || ""}`.trim(),
-            timestamp: u.createdAt,
-            createdAt: u.createdAt,
-            user: u,
-            requestBy: null,
-            _source: "user_table"
-          }))
+          id: `user-${u.id}`,
+          requestType: "USER_APPROVAL",
+          status: "PENDING",
+          message: "User awaiting approval",
+          requestedName: `${u.firstName || ""} ${u.lastName || ""}`.trim(),
+          timestamp: u.createdAt,
+          createdAt: u.createdAt,
+          user: u,
+          requestBy: null,
+          _source: "user_table"
+        }))
         : [];
 
       // Skip PENDING users if status filter is APPROVED or REJECTED

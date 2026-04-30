@@ -17,15 +17,17 @@ export default async function performanceRoutes(fastify) {
               return reply.code(401).send({ success: false, message: "Unauthorized" });
             }
 
-            const companyId = req.user.companyId;
-            if (!companyId) {
+            const isSuperAdmin = req.user.userType === 'superadmin' || req.user.userType === 'super-admin';
+            const companyId = isSuperAdmin ? undefined : req.user.companyId;
+
+            if (!isSuperAdmin && !companyId) {
                 console.error("DEBUG: companyId is missing for user", req.user);
                 return reply.code(400).send({ success: false, message: "Company ID is missing in user session" });
             }
 
             const roleNo = req.user.roleNo ?? 999;
             const roleName = (req.user.role?.roleName || req.user.role_name || "").toUpperCase();
-            const isPowerRole = req.user.userType === 'clientadmin' || roleName === 'ADMIN' || roleNo <= 4;
+            const isPowerRole = isSuperAdmin || req.user.userType === 'clientadmin' || roleName === 'ADMIN' || roleNo <= 4;
 
             let filterUserIds = [];
             if (!isPowerRole) {
@@ -91,11 +93,18 @@ export default async function performanceRoutes(fastify) {
                     select: { status: true }
                 }),
 
-                // 5. Network Growth (Total Associates)
+                // 5. Network Growth — all users in the company are associates
+                // (any entry in the User table = associate, regardless of role name)
+                // Only exclude explicitly finance/accounts roles
                 prisma.user.findMany({
                     where: {
                         companyId,
-                        role: { roleName: { contains: 'ASSOCIATE', mode: 'insensitive' } }
+                        role: {
+                            roleName: {
+                                notIn: ['accounts', 'accountant', 'finance'],
+                                mode: 'insensitive'
+                            }
+                        }
                     },
                     select: { createdAt: true }
                 })

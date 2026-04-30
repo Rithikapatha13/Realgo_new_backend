@@ -71,13 +71,13 @@ export default async function userRoutes(fastify) {
             ]);
 
             const combined = [
-                ...admins.map(a => ({ 
-                    id: a.id, 
+                ...admins.map(a => ({
+                    id: a.id,
                     username: a.username || `${a.firstName || ''} ${a.lastName || ''}`.trim() || 'Unknown Admin',
                     label: `(Admin) ${a.username || a.firstName || 'Admin'}`
                 })),
-                ...users.map(u => ({ 
-                    id: u.id, 
+                ...users.map(u => ({
+                    id: u.id,
                     username: u.username || `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Unknown User',
                     label: u.username || u.firstName || 'User'
                 }))
@@ -198,6 +198,11 @@ export default async function userRoutes(fastify) {
             const bcrypt = await import("bcrypt");
             const saltRounds = 10;
 
+            // Determine if the creator is an admin — admins bypass the pending queue
+            const creatorType = (req.user.userType || req.user.role || "").toLowerCase();
+            const isCreatorAdmin = creatorType.includes("admin") || creatorType === "superadmin" || creatorType === "companyadmin";
+            const defaultStatus = isCreatorAdmin ? "VERIFIED" : "PENDING";
+
             const data = {
                 firstName: body.firstName,
                 lastName: body.lastName,
@@ -210,7 +215,7 @@ export default async function userRoutes(fastify) {
                 state: body.state,
                 country: body.country,
                 pinCode: body.pinCode || body.zipCode,
-                status: body.status || "PENDING",
+                status: body.status || defaultStatus,
                 roleId: body.roleId || body.role,
                 image: body.image || body.img,
                 referId: body.referId || body.refer_id || body.teamHeadId || body.team_head_id || null,
@@ -272,8 +277,8 @@ export default async function userRoutes(fastify) {
             return reply.send({ success: true, message: "User saved successfully", data: user });
         } catch (err) {
             req.log.error(err);
-            const message = err.code === 'P2002' 
-                ? `Conflict: ${err.meta?.target || 'Unique constraint failed'}` 
+            const message = err.code === 'P2002'
+                ? `Conflict: ${err.meta?.target || 'Unique constraint failed'}`
                 : (err.message || "Internal server error");
             return reply.code(500).send({ success: false, message });
         }
@@ -337,15 +342,15 @@ export default async function userRoutes(fastify) {
 
                 // Generate User Auth ID
                 const userAuthId = `G-${Date.now().toString().slice(-6)}`;
-                
+
                 // Password handling
                 const rawPassword = row.password || row.Password || "Realgo@123";
                 const hashedPassword = await bcrypt.hash(rawPassword, 10);
-                
+
                 // Username fallback
                 const lastName = row.lastName || row.LastName || "";
                 let username = row.username || row.Username || `${firstName}${lastName}`.toLowerCase().replace(/\s+/g, '');
-                
+
                 // Check if username exists, if so append random to it
                 const usernameExists = await fastify.prisma.user.findFirst({ where: { username, companyId } });
                 if (usernameExists) {
