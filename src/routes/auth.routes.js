@@ -200,10 +200,10 @@ export default async function authRoutes(fastify) {
 
         if (authUser) {
           userType = "clientadmin";
-          authUser.role = { 
+          authUser.role = {
             roleName: "COMPANY_ADMIN",
             modules: authUser.company?.modules || [], // ClientAdmin uses company modules
-            roleNo: 0 
+            roleNo: 0
           }; // Map virtual role
         } else {
           authUser = await fastify.prisma.admin.findFirst({
@@ -313,7 +313,7 @@ export default async function authRoutes(fastify) {
       }
 
       // ---------------- SAME PASSWORD ACROSS COMPANIES ----------------
-      if (userType === "user") {
+      if (userType === "associate") {
         const reusedPassword = await fastify.prisma.user.findFirst({
           where: {
             phone,
@@ -338,14 +338,20 @@ export default async function authRoutes(fastify) {
       };
 
       if (companyId) tokenPayload.companyId = companyId;
-      if (authUser.role) {
+      if (authUser.role && typeof authUser.role === "object") {
         tokenPayload.role = authUser.role;
         tokenPayload.roleId = authUser.roleId;
         tokenPayload.roleNo = authUser.role.roleNo;
-        
+
         // Gatekeeper: Intersect Role modules with Company modules to ensure strict restriction
         const companyModules = authUser.company?.modules || [];
-        tokenPayload.roleModules = authUser.role.modules.filter(m => companyModules.includes(m));
+        tokenPayload.roleModules = (authUser.role.modules || []).filter(m => companyModules.includes(m));
+      } else if (userType === 'superadmin') {
+        // Superadmin has full access and role is just a string
+        tokenPayload.role = authUser.role;
+        tokenPayload.roleName = authUser.roleName || 'superadmin';
+        tokenPayload.roleNo = -1; // Superadmin is above all
+        tokenPayload.roleModules = ["ALL"]; // Or whatever logic identifies superadmin access
       }
 
       const user = {
@@ -360,10 +366,10 @@ export default async function authRoutes(fastify) {
         companyName: authUser.company?.company,
         referId: authUser.referId,
         teamHeadId: authUser.teamHeadId,
-        role: authUser.roleName || authUser.role?.roleName,
+        role: authUser.roleName || (typeof authUser.role === 'string' ? authUser.role : authUser.role?.roleName),
         roleId: authUser.roleId,
-        roleModules: (authUser.role?.modules || []).filter(m => (authUser.company?.modules || []).includes(m)),
-        roleNo: authUser.role?.roleNo || (userType === 'clientadmin' ? 0 : 999),
+        roleModules: userType === 'superadmin' ? ["ALL"] : (authUser.role?.modules || []).filter(m => (authUser.company?.modules || []).includes(m)),
+        roleNo: userType === 'superadmin' ? -1 : (authUser.role?.roleNo || (userType === 'clientadmin' ? 0 : 999)),
         userName: authUser.username,
         companyImg: authUser.company?.img,
         primaryColour: authUser.company?.primaryColour,
