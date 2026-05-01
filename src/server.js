@@ -31,6 +31,7 @@ import noteRoutes from "./routes/note.routes.js";
 import reminderRoutes from "./routes/reminder.routes.js";
 import { projectStatusRoutes } from "./routes/projectStatus.routes.js";
 import { associateFinanceRoutes } from "./routes/associateFinance.routes.js";
+import { migrateRoutes } from "./routes/migrate.routes.js";
 
 const app = Fastify({
   logger: true,
@@ -107,6 +108,7 @@ app.register(requestRoutes, { prefix: "/api" });
 app.register(siteVisitRoutes, { prefix: "/api" });
 app.register(noteRoutes, { prefix: "/api" });
 app.register(reminderRoutes, { prefix: "/api" });
+app.register(migrateRoutes, { prefix: "/api/migrate" });
 app.register(associateFinanceRoutes, { prefix: "/api/associate-finance" });
 
 

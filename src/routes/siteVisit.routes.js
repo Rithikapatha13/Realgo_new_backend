@@ -267,7 +267,7 @@ export const siteVisitRoutes = async (fastify, options) => {
   // ================= VEHICLE ROUTES =================
 
   // GET all vehicles
-  fastify.get("/vehicles", async (req, res) => {
+  fastify.get("/site-visits/vehicles", async (req, res) => {
     try {
       const { companyId } = req.user;
       const items = await fastify.prisma.vehicle.findMany({
@@ -282,7 +282,7 @@ export const siteVisitRoutes = async (fastify, options) => {
   });
 
   // POST create vehicle
-  fastify.post("/vehicles", async (req, res) => {
+  fastify.post("/site-visits/vehicles", async (req, res) => {
     try {
       const { companyId } = req.user;
       const item = await fastify.prisma.vehicle.create({
@@ -296,7 +296,7 @@ export const siteVisitRoutes = async (fastify, options) => {
   });
 
   // PUT update vehicle
-  fastify.put("/vehicles/:id", async (req, res) => {
+  fastify.put("/site-visits/vehicles/:id", async (req, res) => {
     try {
       const { id } = req.params;
       const item = await fastify.prisma.vehicle.update({
@@ -311,7 +311,7 @@ export const siteVisitRoutes = async (fastify, options) => {
   });
 
   // DELETE vehicle
-  fastify.delete("/vehicles/:id", async (req, res) => {
+  fastify.delete("/site-visits/vehicles/:id", async (req, res) => {
     try {
       const { id } = req.params;
       await fastify.prisma.vehicle.delete({ where: { id } });
@@ -325,7 +325,7 @@ export const siteVisitRoutes = async (fastify, options) => {
   // ================= VEHICLE SITE VISIT ROUTES =================
 
   // GET all vehicle visits
-  fastify.get("/vehicle-site-visits", async (req, res) => {
+  fastify.get("/site-visits/vehicle-site-visits", async (req, res) => {
     try {
       const { companyId } = req.user;
       const { page = 1, limit = 10, associateId } = req.query;
@@ -355,7 +355,7 @@ export const siteVisitRoutes = async (fastify, options) => {
   });
 
   // POST create vehicle visit
-  fastify.post("/vehicle-site-visits", async (req, res) => {
+  fastify.post("/site-visits/vehicle-site-visits", async (req, res) => {
     try {
       const { companyId } = req.user;
       const { startKms, endKms } = req.body;
@@ -382,7 +382,7 @@ export const siteVisitRoutes = async (fastify, options) => {
   });
 
   // DELETE vehicle visit
-  fastify.delete("/vehicle-site-visits/:id", async (req, res) => {
+  fastify.delete("/site-visits/vehicle-site-visits/:id", async (req, res) => {
     try {
       const { id } = req.params;
       await fastify.prisma.vehicleSiteVisit.delete({ where: { id } });
@@ -394,7 +394,7 @@ export const siteVisitRoutes = async (fastify, options) => {
   });
 
   // PATCH approve/reject vehicle visit
-  fastify.patch("/vehicle-site-visits/:id/status", async (req, res) => {
+  fastify.patch("/site-visits/vehicle-site-visits/:id/status", async (req, res) => {
     try {
       const { id } = req.params;
       const { status } = req.body; // APPROVED or REJECTED
