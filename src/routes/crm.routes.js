@@ -9,6 +9,75 @@ export default async function crmRoutes(fastify) {
     fastify.addHook("preHandler", authMiddleware);
 
     // =====================================================
+    // HELPER — LOAD BALANCED TELECALLER DISTRIBUTION
+    // =====================================================
+async function getTelecallerForLead(companyId) {
+    const MIN_ACTIVE_LEADS = 3;
+    const MAX_CAPACITY = 10;
+
+    // 1. Fetch dedicated telecallers (online & available first)
+    let telecallers = await prisma.telecaller.findMany({
+        where: { companyId, isOnline: true, availability: "AVAILABLE" },
+        include: { _count: { select: { leads: true } } }
+    });
+
+    // 2. Fallback: If no online telecallers, get any VERIFIED telecaller
+    if (telecallers.length === 0) {
+        telecallers = await prisma.telecaller.findMany({
+            where: { companyId, status: "VERIFIED" },
+            include: { _count: { select: { leads: true } } }
+        });
+    }
+
+    // Mark all as dedicated TC (from Telecaller table)
+    telecallers = telecallers.map(t => ({ ...t, isDedicated: true }));
+
+    if (telecallers.length > 0) {
+        // filter by capacity
+        const available = telecallers.filter(t => t._count.leads < MAX_CAPACITY);
+        if (available.length > 0) {
+            const belowMin = available.filter(t => t._count.leads < MIN_ACTIVE_LEADS);
+            if (belowMin.length > 0) {
+                belowMin.sort((a, b) => a._count.leads - b._count.leads);
+                return { id: belowMin[0].id, isDedicatedTC: true };
+            }
+            // otherwise select the least loaded
+            available.sort((a, b) => a._count.leads - b._count.leads);
+            return { id: available[0].id, isDedicatedTC: true };
+        }
+    }
+    return null;
+}
+
+
+
+
+
+
+
+    // =====================================================
+    // GET ASSIGNABLE ONLINE TELECALLER
+    // =====================================================
+    fastify.get("/assign-telecaller", async (req, reply) => {
+        try {
+            const companyId = req.user.companyId;
+            const assignedTC = await getTelecallerForLead(companyId);
+            if (assignedTC) {
+                return reply.send({
+                    success: true,
+                    id: assignedTC.id,
+                    isDedicatedTC: assignedTC.isDedicatedTC
+                });
+            }
+            return reply.send({ success: false, message: "No online telecallers available" });
+        } catch (err) {
+            req.log.error(err);
+            return reply.code(500).send({ success: false, message: "Internal server error" });
+        }
+    });
+
+
+    // =====================================================
     // GET LEADS (Dual Pipeline + Role-based access)
     // =====================================================
     fastify.get("/leads", async (req, reply) => {
@@ -141,9 +210,34 @@ export default async function crmRoutes(fastify) {
             const isAdmin = userType === "admin" || userType === "clientadmin" || userType === "superadmin";
             const isAssociate = !isAdmin && !isTC && !isAdminTC;
 
-            // Fallback for userId if the creator is an Admin (since Lead.userId is mandatory in schema)
+            let dedicatedTCId = req.body.dedicatedTCId || (isTC ? req.user.userId : null);
+            let adminTCId = req.body.adminTCId || null;
+
+            // Note: Telecaller Admins should NOT self-assign adminTCId.
+            // Leads created by them get auto-distributed to telecallers below.
+
+            let associateId = isAssociate ? req.user.userId : null;
+
+            // Auto-assign to telecaller if Admin creates and no assignment was sent
+            if (isAdmin && !associateId && !dedicatedTCId && !adminTCId) {
+                const assignedTC = await getTelecallerForLead(companyId);
+                if (assignedTC) {
+                    if (assignedTC.isDedicatedTC) {
+                        dedicatedTCId = assignedTC.id;
+                    } else {
+                        // Verify this ID actually exists in Admin table before setting
+                        const verifyAdmin = await prisma.admin.findUnique({ where: { id: assignedTC.id } });
+                        if (verifyAdmin) {
+                            adminTCId = assignedTC.id;
+                        }
+                    }
+                }
+            }
+
+            // Validate all FK references before inserting
+            // 1. userId (mandatory) - must exist in User table
             let creatorUserId = null;
-            if (isAdmin) {
+            if (isAdmin || isAdminTC) {
                 const fallbackUser = await prisma.user.findFirst({ where: { companyId } });
                 if (fallbackUser) {
                     creatorUserId = fallbackUser.id;
@@ -151,7 +245,44 @@ export default async function crmRoutes(fastify) {
                     return reply.code(400).send({ success: false, message: "No active users found in this company to assign as lead creator." });
                 }
             } else {
-                creatorUserId = req.user.userId;
+                // Verify req.user.userId exists in User table
+                const userCheck = await prisma.user.findUnique({ where: { id: req.user.userId } });
+                if (userCheck) {
+                    creatorUserId = req.user.userId;
+                } else {
+                    const fallbackUser = await prisma.user.findFirst({ where: { companyId } });
+                    creatorUserId = fallbackUser?.id || null;
+                    if (!creatorUserId) {
+                        return reply.code(400).send({ success: false, message: "No valid user found for lead creation." });
+                    }
+                }
+            }
+
+            // 2. assignedById - must exist in User table (nullable)
+            let assignedById = null;
+            if (req.user.userId) {
+                const userRecord = await prisma.user.findUnique({ where: { id: req.user.userId } });
+                if (userRecord) {
+                    assignedById = req.user.userId;
+                }
+            }
+
+            // 3. Validate dedicatedTCId exists in Telecaller table
+            if (dedicatedTCId) {
+                const tcCheck = await prisma.telecaller.findUnique({ where: { id: dedicatedTCId } });
+                if (!tcCheck) dedicatedTCId = null;
+            }
+
+            // 4. Validate adminTCId exists in Admin table
+            if (adminTCId) {
+                const adminCheck = await prisma.admin.findUnique({ where: { id: adminTCId } });
+                if (!adminCheck) adminTCId = null;
+            }
+
+            // 5. Validate associateId exists in User table
+            if (associateId) {
+                const assocCheck = await prisma.user.findUnique({ where: { id: associateId } });
+                if (!assocCheck) associateId = null;
             }
 
             console.log("DEBUG_LEAD_CREATE:", {
@@ -159,6 +290,10 @@ export default async function crmRoutes(fastify) {
                 leadContact,
                 companyId,
                 creatorUserId,
+                dedicatedTCId,
+                adminTCId,
+                associateId,
+                assignedById,
                 isTC,
                 isAdminTC,
                 isAssociate,
@@ -178,14 +313,12 @@ export default async function crmRoutes(fastify) {
                     date: new Date(),
                     companyId: companyId,
                     userId: creatorUserId,
-                    dedicatedTCId: isTC ? req.user.userId : null,
-                    adminTCId: isAdminTC ? req.user.userId : null,
-                    associateId: isAssociate ? req.user.userId : null,
-                    assignedById: isAdmin ? null : req.user.userId
+                    dedicatedTCId,
+                    adminTCId,
+                    associateId,
+                    assignedById
                 }
             });
-
-            return reply.code(201).send({ success: true, lead: newLead });
 
             return reply.code(201).send({ success: true, lead: newLead });
 
@@ -245,15 +378,36 @@ export default async function crmRoutes(fastify) {
                         callbackAt: callbackAt ? new Date(callbackAt) : null
                     }
                 });
+
+                // COLD LEAD ALERT (5x CONSECUTIVE COLD CALLS)
+                if (status === "COLD") {
+                    const lastLogs = await prisma.callLog.findMany({
+                        where: { leadId: id },
+                        orderBy: { createdAt: "desc" },
+                        take: 5
+                    });
+
+                    if (lastLogs.length >= 5 && lastLogs.every(l => l.status === "COLD")) {
+                        await prisma.eventLog.create({
+                            data: {
+                                category: "LEAD_ALERT",
+                                actionBy: req.user.username || "System",
+                                actionDescription: `REASSIGN LEAD: Lead ${lead.leadName} has been marked COLD 5 times consecutively by ${req.user.firstName || req.user.username}.`,
+                                companyId
+                            }
+                        });
+                    }
+                }
             }
 
-            // Escalate to Associate (Auto-Assignment for HOT leads)
+            // Escalate to Associate (Auto-Assignment for HOT leads using weighted multi-bucket performance balancer)
             if (!isAssociateUpdate && !isAssociate && status === "HOT" && !lead.associateId) {
-                const associates = await prisma.user.findMany({
+                let associates = await prisma.user.findMany({
                     where: {
                         companyId,
                         status: "VERIFIED",
-                        isOnline: true
+                        isOnline: true,
+                        availability: "AVAILABLE"
                     },
                     include: {
                         _count: {
@@ -262,15 +416,92 @@ export default async function crmRoutes(fastify) {
                     }
                 });
 
-                if (associates.length > 0) {
-                    associates.sort((a, b) => a._count.associateLeads - b._count.associateLeads);
-                    const selected = associates[0];
-
-                    lead = await prisma.lead.update({
-                        where: { id },
-                        data: { associateId: selected.id },
-                        include: { associate: { select: { id: true, firstName: true, lastName: true } } }
+                // Fallback: If no online available associates are found, grab any verified associates
+                if (associates.length === 0) {
+                    associates = await prisma.user.findMany({
+                        where: {
+                            companyId,
+                            status: "VERIFIED"
+                        },
+                        include: {
+                            _count: {
+                                select: { associateLeads: true }
+                            }
+                        }
                     });
+                }
+
+                if (associates.length > 0) {
+                    const MIN_ASSOCIATE_LEADS = 2;
+                    const MAX_ASSOCIATE_CAPACITY = 10;
+
+                    const available = associates.filter(
+                        a => a._count.associateLeads < MAX_ASSOCIATE_CAPACITY
+                    );
+
+                    if (available.length > 0) {
+                        let selected = null;
+
+                        const belowMinimum = available.filter(
+                            a => a._count.associateLeads < MIN_ASSOCIATE_LEADS
+                        );
+
+                        if (belowMinimum.length > 0) {
+                            belowMinimum.sort(
+                                (a, b) => a._count.associateLeads - b._count.associateLeads
+                            );
+                            selected = belowMinimum[0];
+                        } else {
+                            const sorted = available.sort(
+                                (a, b) => (b.performanceScore || 0) - (a.performanceScore || 0)
+                            );
+
+                            const topBucket = sorted.slice(0, Math.ceil(sorted.length * 0.3));
+                            const midBucket = sorted.slice(
+                                Math.ceil(sorted.length * 0.3),
+                                Math.ceil(sorted.length * 0.7)
+                            );
+                            const lowBucket = sorted.slice(Math.ceil(sorted.length * 0.7));
+
+                            const r = Math.random();
+                            let pool = [];
+
+                            if (r < 0.5) pool = topBucket;
+                            else if (r < 0.8) pool = midBucket;
+                            else pool = lowBucket;
+
+                            if (pool.length === 0) pool = available;
+
+                            pool.sort(
+                                (a, b) => a._count.associateLeads - b._count.associateLeads
+                            );
+
+                            selected = pool[0];
+                        }
+
+                        if (selected) {
+                            lead = await prisma.lead.update({
+                                where: { id },
+                                data: { associateId: selected.id },
+                                include: {
+                                    dedicatedTC: { select: { id: true, firstName: true, lastName: true } },
+                                    adminTC: { select: { id: true, firstName: true, lastName: true } },
+                                    telecaller: { select: { id: true, firstName: true, lastName: true } },
+                                    associate: { select: { id: true, firstName: true, lastName: true } }
+                                }
+                            });
+
+                            // Create an EventLog entry for the auto-transfer
+                            await prisma.eventLog.create({
+                                data: {
+                                    category: "LEAD_ESCALATION",
+                                    actionBy: req.user.username || "System",
+                                    actionDescription: `Lead ${lead.leadName} transferred to associate ${selected.firstName || selected.username} by ${req.user.firstName || req.user.username}`,
+                                    companyId
+                                }
+                            });
+                        }
+                    }
                 }
             }
 
@@ -299,11 +530,19 @@ export default async function crmRoutes(fastify) {
             const userType = (req.user.userType || "").toLowerCase();
             const isAdmin = userType === "admin" || userType === "clientadmin" || userType === "superadmin";
 
+            let assignedById = null;
+            if (!isAdmin && req.user.userId) {
+                const userRecord = await prisma.user.findUnique({ where: { id: req.user.userId } });
+                if (userRecord) {
+                    assignedById = req.user.userId;
+                }
+            }
+
             // Check if telecallerId provided is for Telecaller table or Admin table
             // In a production app, the frontend should ideally specify, but we can check if it exists in Admin
             let assignData = {
                 associateId: associateId !== undefined ? associateId : undefined,
-                assignedById: isAdmin ? null : req.user.userId
+                assignedById
             };
 
             if (telecallerId !== undefined) {
@@ -525,7 +764,15 @@ export default async function crmRoutes(fastify) {
             const companyId = req.user.companyId;
             let successCount = 0;
 
-            // Batch processing (simplified for integration)
+            let assignedById = null;
+            if (req.user.userId) {
+                const userRecord = await prisma.user.findUnique({ where: { id: req.user.userId } });
+                if (userRecord) {
+                    assignedById = req.user.userId;
+                }
+            }
+
+            // Batch processing (load-balanced auto distribution)
             for (const row of rows) {
                 const leadName = row.leadName || row.name || row.Name;
                 const leadContact = String(row.leadContact || row.phone || row.Phone || "");
@@ -542,6 +789,18 @@ export default async function crmRoutes(fastify) {
                     if (fallbackUser) creatorUserId = fallbackUser.id;
                 }
 
+                let dedicatedTCId = null;
+                let adminTCId = null;
+
+                const assignedTC = await getTelecallerForLead(companyId);
+                if (assignedTC) {
+                    if (assignedTC.isDedicatedTC) {
+                        dedicatedTCId = assignedTC.id;
+                    } else {
+                        adminTCId = assignedTC.id;
+                    }
+                }
+
                 await prisma.lead.create({
                     data: {
                         leadName,
@@ -553,7 +812,10 @@ export default async function crmRoutes(fastify) {
                         leadStatus: "NEW",
                         companyId,
                         userId: creatorUserId,
-                        date: new Date()
+                        dedicatedTCId,
+                        adminTCId,
+                        date: new Date(),
+                        assignedById
                     }
                 });
                 successCount++;
@@ -707,28 +969,46 @@ export default async function crmRoutes(fastify) {
             const companyId = req.user.companyId;
 
             // 1. Fetch Admins with Telecaller role
-            const tcs = await prisma.admin.findMany({
+            const adminTcs = await prisma.admin.findMany({
                 where: { 
                     companyId,
-                    role: { roleName: { contains: "TELECALLER", mode: "insensitive" } },
-                    status: "ACTIVE"
+                    role: { roleName: { contains: "TELECALLER", mode: "insensitive" } }
                 },
                 select: { id: true, firstName: true, lastName: true }
             });
 
-            // 2. Fetch Associates (Users)
+            // 2. Fetch Dedicated Telecallers from Telecaller table
+            const dedicatedTcs = await prisma.telecaller.findMany({
+                where: {
+                    companyId
+                },
+                select: { id: true, firstName: true, lastName: true }
+            });
+
+            // Combine and deduplicate by ID
+            const telecallerMap = new Map();
+            adminTcs.forEach(t => {
+                telecallerMap.set(t.id, `${t.firstName || ""} ${t.lastName || ""}`.trim());
+            });
+            dedicatedTcs.forEach(t => {
+                if (!telecallerMap.has(t.id)) {
+                    telecallerMap.set(t.id, `${t.firstName || ""} ${t.lastName || ""}`.trim());
+                }
+            });
+            const combinedTcs = Array.from(telecallerMap.entries()).map(([id, name]) => ({ id, name }));
+
+            // 3. Fetch Associates (Users)
             const associates = await prisma.user.findMany({
                 where: { 
-                    companyId,
-                    status: "VERIFIED"
+                    companyId
                 },
                 select: { id: true, firstName: true, lastName: true }
             });
 
             return reply.send({ 
                 success: true, 
-                telecallers: tcs.map(t => ({ id: t.id, name: `${t.firstName} ${t.lastName}` })),
-                associates: associates.map(a => ({ id: a.id, name: `${a.firstName} ${a.lastName}` }))
+                telecallers: combinedTcs,
+                associates: associates.map(a => ({ id: a.id, name: `${a.firstName || ""} ${a.lastName || ""}`.trim() }))
             });
 
         } catch (err) {
