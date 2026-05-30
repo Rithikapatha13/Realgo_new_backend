@@ -264,5 +264,66 @@ export default async function commonRoutes(fastify) {
       return reply.code(500).send({ success: false, message: "Internal server error" });
     }
   });
+
+  // GET /api/common/notifications - Fetch notifications for current user
+  fastify.get("/notifications", { preHandler: [authMiddleware] }, async (req, reply) => {
+    try {
+      const { userId, userType, companyId } = req.user;
+
+      let notifications = [];
+
+      if (userType === "telecaller") {
+        notifications = await fastify.prisma.notification.findMany({
+          where: { companyId, telecallerId: userId },
+          orderBy: { createdAt: "desc" },
+          take: 50
+        });
+      } else if (userType === "admin" || userType === "clientadmin") {
+        notifications = await fastify.prisma.notification.findMany({
+          where: { companyId, adminId: userId },
+          orderBy: { createdAt: "desc" },
+          take: 50
+        });
+      } else {
+        // User/Associate
+        notifications = await fastify.prisma.notification.findMany({
+          where: { companyId, userId: userId },
+          orderBy: { createdAt: "desc" },
+          take: 50
+        });
+      }
+
+      return reply.send({ success: true, notifications });
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send({ success: false, message: "Failed to fetch notifications" });
+    }
+  });
+
+  // PATCH /api/common/notifications/read - Mark all notifications as read
+  fastify.patch("/notifications/read", { preHandler: [authMiddleware] }, async (req, reply) => {
+    try {
+      const { userId, userType, companyId } = req.user;
+
+      let where = { companyId };
+      if (userType === "telecaller") {
+        where.telecallerId = userId;
+      } else if (userType === "admin" || userType === "clientadmin") {
+        where.adminId = userId;
+      } else {
+        where.userId = userId;
+      }
+
+      await fastify.prisma.notification.updateMany({
+        where,
+        data: { isRead: true }
+      });
+
+      return reply.send({ success: true, message: "Notifications marked as read" });
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send({ success: false, message: "Failed to update notifications" });
+    }
+  });
 }
 

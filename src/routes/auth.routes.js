@@ -384,13 +384,11 @@ export default async function authRoutes(fastify) {
       } else if (userType === "admin") {
         const roleName = (authUser.role?.roleName || "").toUpperCase();
         if (roleName.includes("TELECALLER")) {
-          await fastify.prisma.admin.update({
-            where: { id: authUser.id },
-            data: { isOnline: true, availability: "AVAILABLE" }
-          });
+          // Admin model does not have isOnline or availability fields, so we only run auto-assignment.
           await autoAssignPendingLeadsForTelecaller(fastify.prisma, authUser.id, companyId, false);
         }
       }
+
 
       // ---------------- TOKEN ----------------
       const tokenPayload = {

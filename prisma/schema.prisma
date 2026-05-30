@@ -602,6 +602,8 @@ model Lead {
   associate    User?   @relation("AssociateLeads", fields: [associateId], references: [id])
   assignedById String?
   assignedBy   User?   @relation("AdminAssignments", fields: [assignedById], references: [id])
+  addedByName  String?
+  addedByRole  String?
 
   callLogs CallLog[]
   meetings Meeting[]

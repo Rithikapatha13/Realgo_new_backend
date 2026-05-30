@@ -9,6 +9,36 @@ export default async function crmRoutes(fastify) {
     fastify.addHook("preHandler", authMiddleware);
 
     // =====================================================
+    // HELPER — CREATE NOTIFICATION
+    // =====================================================
+    async function createCrmNotification({ title, body, notificationType, companyId, userId, telecallerId, adminId }) {
+        try {
+            const company = await prisma.company.findUnique({
+                where: { id: companyId },
+                select: { company: true }
+            });
+            const companyName = company ? company.company : "Realgo";
+
+            await prisma.notification.create({
+                data: {
+                    title,
+                    body,
+                    notificationType,
+                    companyId,
+                    companyName,
+                    status: "UNREAD",
+                    isRead: false,
+                    userId: userId || null,
+                    telecallerId: telecallerId || null,
+                    adminId: adminId || null
+                }
+            });
+        } catch (err) {
+            console.error("Failed to create notification:", err);
+        }
+    }
+
+    // =====================================================
     // HELPER — LOAD BALANCED TELECALLER DISTRIBUTION
     // =====================================================
 async function getTelecallerForLead(companyId) {
@@ -93,14 +123,14 @@ async function getTelecallerForLead(companyId) {
             const isTC = userType === "telecaller";
             const isAdminTC = userType === "admin" && roleName === "TELECALLER ADMIN";
             const isAccountant = roleName === "ACCOUNTANT" || roleName === "ACCOUNTS";
-            const isAdmin = (userType === "admin" || userType === "clientadmin" || userType === "superadmin") && !isAdminTC;
+            const isAdmin = (userType === "admin" || userType === "clientadmin" || userType === "superadmin");
 
             if (isTC) {
                 // Dedicated Telecaller table
                 where.dedicatedTCId = req.user.userId;
-            } else if (isAdminTC) {
-                // Admin table telecaller
-                where.adminTCId = req.user.userId;
+                where.NOT = {
+                    addedByRole: "ASSOCIATE"
+                };
             } else if (!isAdmin && !isAccountant) {
                 // Associate
                 where.associateId = req.user.userId;
@@ -110,8 +140,12 @@ async function getTelecallerForLead(companyId) {
             if (status && status !== "ALL") {
                 if (["NEW", "HOT", "WARM", "COLD", "LATER"].includes(status)) {
                     where.leadStatus = status;
+                    where.OR = [
+                        { assocStatus: null },
+                        { assocStatus: { notIn: ["BOOKED", "PAYMENT_PENDING"] } }
+                    ];
                 }
-                if (["SITEVISIT", "INTERESTED", "FOLLOWUP", "BOOKED"].includes(status)) {
+                if (["SITEVISIT", "INTERESTED", "FOLLOWUP", "BOOKED", "PAYMENT_PENDING"].includes(status)) {
                     where.assocStatus = status;
                 }
                 if (status === "UNASSIGNED") {
@@ -149,7 +183,31 @@ async function getTelecallerForLead(companyId) {
                     dedicatedTC: { select: { id: true, firstName: true, lastName: true, image: true } },
                     adminTC: { select: { id: true, firstName: true, lastName: true, image: true } },
                     telecaller: { select: { id: true, firstName: true, lastName: true } },
-                    associate: { select: { id: true, firstName: true, lastName: true, image: true } },
+                    associate: { 
+                        select: { 
+                            id: true, 
+                            firstName: true, 
+                            lastName: true, 
+                            image: true,
+                            role: { select: { roleName: true } }
+                        } 
+                    },
+                    user: { 
+                        select: { 
+                            id: true, 
+                            firstName: true, 
+                            lastName: true,
+                            role: { select: { roleName: true } }
+                        } 
+                    },
+                    assignedBy: { 
+                        select: { 
+                            id: true, 
+                            firstName: true, 
+                            lastName: true,
+                            role: { select: { roleName: true } }
+                        } 
+                    },
                     _count: {
                         select: { callLogs: true, meetings: true }
                     }
@@ -157,10 +215,30 @@ async function getTelecallerForLead(companyId) {
                 orderBy: { updatedAt: "desc" }
             });
 
-            const leads = leadsData.map(l => ({
-                ...l,
-                interactionCount: l._count.callLogs + l._count.meetings
-            }));
+            const leads = leadsData.map(l => {
+                let displayAddedByName = l.addedByName;
+                let displayAddedByRole = l.addedByRole;
+
+                if (!displayAddedByName) {
+                    if (l.associate) {
+                        displayAddedByName = `${l.associate.firstName || ""} ${l.associate.lastName || ""}`.trim();
+                        displayAddedByRole = l.associate.role?.roleName || "ASSOCIATE";
+                    } else if (l.assignedBy) {
+                        displayAddedByName = `${l.assignedBy.firstName || ""} ${l.assignedBy.lastName || ""}`.trim();
+                        displayAddedByRole = l.assignedBy.role?.roleName || "ADMIN";
+                    } else if (l.user) {
+                        displayAddedByName = `${l.user.firstName || ""} ${l.user.lastName || ""}`.trim();
+                        displayAddedByRole = l.user.role?.roleName || "ADMIN";
+                    }
+                }
+
+                return {
+                    ...l,
+                    addedByName: displayAddedByName,
+                    addedByRole: displayAddedByRole,
+                    interactionCount: l._count.callLogs + l._count.meetings
+                };
+            });
 
             return reply.send({ success: true, leads });
 
@@ -300,6 +378,21 @@ async function getTelecallerForLead(companyId) {
                 isAdmin
             });
 
+            const addedByName = req.user.firstName 
+                ? `${req.user.firstName} ${req.user.lastName || ""}`.trim()
+                : (req.user.username || "System");
+
+            let addedByRole = "SYSTEM";
+            if (userType === "telecaller") {
+                addedByRole = "TELECALLER";
+            } else if (userType === "admin" && roleName === "TELECALLER ADMIN") {
+                addedByRole = "TELECALLER ADMIN";
+            } else if (isAdmin) {
+                addedByRole = "ADMIN";
+            } else {
+                addedByRole = "ASSOCIATE";
+            }
+
             const newLead = await prisma.lead.create({
                 data: {
                     leadName,
@@ -316,9 +409,30 @@ async function getTelecallerForLead(companyId) {
                     dedicatedTCId,
                     adminTCId,
                     associateId,
-                    assignedById
+                    assignedById,
+                    addedByName,
+                    addedByRole
                 }
             });
+
+            // Send notification to assigned telecaller
+            if (newLead.dedicatedTCId) {
+                await createCrmNotification({
+                    title: "New Lead Assigned",
+                    body: `Lead ${newLead.leadName} has been assigned to you.`,
+                    notificationType: "LEAD_ASSIGNMENT",
+                    companyId: newLead.companyId,
+                    telecallerId: newLead.dedicatedTCId
+                });
+            } else if (newLead.adminTCId) {
+                await createCrmNotification({
+                    title: "New Lead Assigned",
+                    body: `Lead ${newLead.leadName} has been assigned to you.`,
+                    notificationType: "LEAD_ASSIGNMENT",
+                    companyId: newLead.companyId,
+                    adminId: newLead.adminTCId
+                });
+            }
 
             return reply.code(201).send({ success: true, lead: newLead });
 
@@ -500,6 +614,27 @@ async function getTelecallerForLead(companyId) {
                                     companyId
                                 }
                             });
+
+                            // Notify Associate
+                            await createCrmNotification({
+                                title: "New Lead Assigned",
+                                body: `Lead ${lead.leadName} has been escalated and assigned to you as HOT.`,
+                                notificationType: "LEAD_ASSIGNMENT",
+                                companyId: lead.companyId,
+                                userId: selected.id
+                            });
+
+                            // Notify all Admins
+                            const admins = await prisma.admin.findMany({ where: { companyId } });
+                            for (const admin of admins) {
+                                await createCrmNotification({
+                                    title: "Lead Escalated to Associate",
+                                    body: `Lead ${lead.leadName} was escalated to associate ${selected.firstName || selected.username}.`,
+                                    notificationType: "LEAD_TRANSFER",
+                                    companyId: lead.companyId,
+                                    adminId: admin.id
+                                });
+                            }
                         }
                     }
                 }
@@ -561,6 +696,50 @@ async function getTelecallerForLead(companyId) {
                 data: assignData
             });
 
+            // Trigger notifications for assignment changes
+            if (telecallerId !== undefined) {
+                if (lead.dedicatedTCId) {
+                    await createCrmNotification({
+                        title: "Lead Assigned",
+                        body: `Lead ${lead.leadName} has been assigned to you.`,
+                        notificationType: "LEAD_ASSIGNMENT",
+                        companyId: lead.companyId,
+                        telecallerId: lead.dedicatedTCId
+                    });
+                } else if (lead.adminTCId) {
+                    await createCrmNotification({
+                        title: "Lead Assigned",
+                        body: `Lead ${lead.leadName} has been assigned to you.`,
+                        notificationType: "LEAD_ASSIGNMENT",
+                        companyId: lead.companyId,
+                        adminId: lead.adminTCId
+                    });
+                }
+            }
+
+            if (associateId !== undefined && associateId) {
+                // Notify Associate
+                await createCrmNotification({
+                    title: "New Lead Assigned",
+                    body: `Lead ${lead.leadName} has been assigned to you.`,
+                    notificationType: "LEAD_ASSIGNMENT",
+                    companyId: lead.companyId,
+                    userId: associateId
+                });
+
+                // Notify all Admins
+                const admins = await prisma.admin.findMany({ where: { companyId } });
+                for (const admin of admins) {
+                    await createCrmNotification({
+                        title: "Lead Transferred to Associate",
+                        body: `Lead ${lead.leadName} was transferred to associate by ${req.user.firstName || req.user.username}.`,
+                        notificationType: "LEAD_TRANSFER",
+                        companyId: lead.companyId,
+                        adminId: admin.id
+                    });
+                }
+            }
+
             return reply.send({ success: true, lead });
 
         } catch (err) {
@@ -581,15 +760,16 @@ async function getTelecallerForLead(companyId) {
             const isTC = userType === "telecaller";
             const isAdminTC = userType === "admin" && roleName === "TELECALLER ADMIN";
             const isAccountant = roleName === "ACCOUNTANT" || roleName === "ACCOUNTS";
-            const isAdmin = (userType === "admin" || userType === "clientadmin" || userType === "superadmin") && !isAdminTC;
-            const isAssociate = !isAdmin && !isTC && !isAdminTC && !isAccountant;
+            const isAdmin = (userType === "admin" || userType === "clientadmin" || userType === "superadmin");
+            const isAssociate = !isAdmin && !isTC && !isAccountant;
 
             const baseWhere = { companyId };
             
             if (isTC) {
                 baseWhere.dedicatedTCId = req.user.userId;
-            } else if (isAdminTC) {
-                baseWhere.adminTCId = req.user.userId;
+                baseWhere.NOT = {
+                    addedByRole: "ASSOCIATE"
+                };
             } else if (isAssociate) {
                 baseWhere.associateId = req.user.userId;
             }
@@ -607,11 +787,56 @@ async function getTelecallerForLead(companyId) {
                 paymentPending
             ] = await Promise.all([
                 prisma.lead.count({ where: baseWhere }),
-                prisma.lead.count({ where: { ...baseWhere, leadStatus: 'HOT' } }),
-                prisma.lead.count({ where: { ...baseWhere, leadStatus: 'WARM' } }),
-                prisma.lead.count({ where: { ...baseWhere, leadStatus: 'COLD' } }),
-                prisma.lead.count({ where: { ...baseWhere, leadStatus: 'NEW' } }),
-                prisma.lead.count({ where: { ...baseWhere, leadStatus: 'LATER' } }),
+                prisma.lead.count({ 
+                    where: { 
+                        ...baseWhere, 
+                        leadStatus: 'HOT',
+                        OR: [
+                            { assocStatus: null },
+                            { assocStatus: { notIn: ['BOOKED', 'PAYMENT_PENDING'] } }
+                        ]
+                    } 
+                }),
+                prisma.lead.count({ 
+                    where: { 
+                        ...baseWhere, 
+                        leadStatus: 'WARM',
+                        OR: [
+                            { assocStatus: null },
+                            { assocStatus: { notIn: ['BOOKED', 'PAYMENT_PENDING'] } }
+                        ]
+                    } 
+                }),
+                prisma.lead.count({ 
+                    where: { 
+                        ...baseWhere, 
+                        leadStatus: 'COLD',
+                        OR: [
+                            { assocStatus: null },
+                            { assocStatus: { notIn: ['BOOKED', 'PAYMENT_PENDING'] } }
+                        ]
+                    } 
+                }),
+                prisma.lead.count({ 
+                    where: { 
+                        ...baseWhere, 
+                        leadStatus: 'NEW',
+                        OR: [
+                            { assocStatus: null },
+                            { assocStatus: { notIn: ['BOOKED', 'PAYMENT_PENDING'] } }
+                        ]
+                    } 
+                }),
+                prisma.lead.count({ 
+                    where: { 
+                        ...baseWhere, 
+                        leadStatus: 'LATER',
+                        OR: [
+                            { assocStatus: null },
+                            { assocStatus: { notIn: ['BOOKED', 'PAYMENT_PENDING'] } }
+                        ]
+                    } 
+                }),
                 prisma.lead.count({ where: { ...baseWhere, dedicatedTCId: null, adminTCId: null } }),
                 prisma.lead.count({ where: { ...baseWhere, assocStatus: 'SITEVISIT' } }),
                 prisma.lead.count({ where: { ...baseWhere, assocStatus: 'BOOKED' } }),
@@ -661,12 +886,13 @@ async function getTelecallerForLead(companyId) {
 
             const isTC = userType === "telecaller";
             const isAdminTC = userType === "admin" && roleName === "TELECALLER ADMIN";
-            const isAdmin = (userType === "admin" || userType === "clientadmin" || userType === "superadmin") && !isAdminTC;
+            const isAdmin = (userType === "admin" || userType === "clientadmin" || userType === "superadmin");
 
             if (isTC) {
                 where.dedicatedTCId = req.user.userId;
-            } else if (isAdminTC) {
-                where.adminTCId = req.user.userId;
+                where.NOT = {
+                    addedByRole: "ASSOCIATE"
+                };
             } else if (!isAdmin) {
                 where.associateId = req.user.userId;
             }
@@ -703,31 +929,42 @@ async function getTelecallerForLead(companyId) {
             const isAssociate = !isAdmin && !isTelecaller && !isAccountant;
 
             const isTC = userType === "telecaller";
-            const isAdminTC = userType === "admin" && roleName === "TELECALLER ADMIN";
 
-            const where = { lead: { companyId } };
+            const callLogWhere = { lead: { companyId } };
+            const meetingWhere = { lead: { companyId } };
 
             if (isTC) {
-                where.lead.dedicatedTCId = req.user.userId;
-            } else if (isAdminTC) {
-                where.lead.adminTCId = req.user.userId;
+                callLogWhere.lead.dedicatedTCId = req.user.userId;
+                meetingWhere.lead.dedicatedTCId = req.user.userId;
             } else if (isAssociate) {
-                where.lead.associateId = req.user.userId;
+                callLogWhere.lead.associateId = req.user.userId;
+                meetingWhere.lead.associateId = req.user.userId;
             }
 
-            const logs = await prisma.callLog.findMany({
-                where,
-                include: {
-                    dedicatedTC: { select: { firstName: true, lastName: true } },
-                    adminTC: { select: { firstName: true, lastName: true } },
-                    telecaller: { select: { firstName: true, lastName: true } },
-                    lead: { select: { leadName: true } }
-                },
-                orderBy: { createdAt: "desc" },
-                take: 15
-            });
+            const [logs, meetings] = await Promise.all([
+                prisma.callLog.findMany({
+                    where: callLogWhere,
+                    include: {
+                        dedicatedTC: { select: { firstName: true, lastName: true } },
+                        adminTC: { select: { firstName: true, lastName: true } },
+                        telecaller: { select: { firstName: true, lastName: true } },
+                        lead: { select: { leadName: true } }
+                    },
+                    orderBy: { createdAt: "desc" },
+                    take: 15
+                }),
+                prisma.meeting.findMany({
+                    where: meetingWhere,
+                    include: {
+                        associate: { select: { firstName: true, lastName: true } },
+                        lead: { select: { leadName: true } }
+                    },
+                    orderBy: { createdAt: "desc" },
+                    take: 15
+                })
+            ]);
 
-            const activities = logs.map(l => {
+            const callActivities = logs.map(l => {
                 const tcName = l.dedicatedTC ? l.dedicatedTC.firstName : 
                                l.adminTC ? l.adminTC.firstName : 
                                l.telecaller?.firstName || "System";
@@ -738,6 +975,34 @@ async function getTelecallerForLead(companyId) {
                     color: l.status === 'HOT' ? '#ef4444' : '#3b82f6'
                 };
             });
+
+            const meetingActivities = meetings.map(m => {
+                const assocName = m.associate?.firstName || "Associate";
+                let statusText = m.outcome;
+                if (m.outcome === "SITEVISIT") {
+                    if (m.interested === "YES" && m.bookingStatus) {
+                        statusText = m.bookingStatus === "BOOKED" ? "BOOKED / CONFIRMED" : "PAYMENT PENDING";
+                    } else {
+                        statusText = "SITE VISIT DONE";
+                    }
+                } else if (m.outcome === "BOOKED") {
+                    statusText = "BOOKED";
+                } else if (m.outcome === "FOLLOWUP") {
+                    statusText = "FOLLOWUP REQUIRED";
+                } else if (m.outcome === "COLD") {
+                    statusText = "GONE COLD";
+                }
+                return {
+                    id: m.id,
+                    text: `<strong>${assocName}</strong> marked ${m.lead.leadName} as <strong>${statusText}</strong>`,
+                    createdAt: m.createdAt,
+                    color: m.bookingStatus === 'BOOKED' || m.outcome === 'BOOKED' ? '#10b981' : m.outcome === 'SITEVISIT' ? '#f59e0b' : '#3b82f6'
+                };
+            });
+
+            const activities = [...callActivities, ...meetingActivities]
+                .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                .slice(0, 15);
 
             return reply.send({ success: true, activities });
         } catch (err) {
@@ -770,6 +1035,25 @@ async function getTelecallerForLead(companyId) {
                 if (userRecord) {
                     assignedById = req.user.userId;
                 }
+            }
+
+            const bulkUserType = (req.user.userType || "").toLowerCase();
+            const bulkRoleName = (req.user.role?.roleName || "").toUpperCase();
+            const bulkIsAdmin = bulkUserType === "admin" || bulkUserType === "clientadmin" || bulkUserType === "superadmin";
+
+            const addedByName = req.user.firstName 
+                ? `${req.user.firstName} ${req.user.lastName || ""}`.trim()
+                : (req.user.username || "System");
+
+            let addedByRole = "SYSTEM";
+            if (bulkUserType === "telecaller") {
+                addedByRole = "TELECALLER";
+            } else if (bulkUserType === "admin" && bulkRoleName === "TELECALLER ADMIN") {
+                addedByRole = "TELECALLER ADMIN";
+            } else if (bulkIsAdmin) {
+                addedByRole = "ADMIN";
+            } else {
+                addedByRole = "ASSOCIATE";
             }
 
             // Batch processing (load-balanced auto distribution)
@@ -815,7 +1099,9 @@ async function getTelecallerForLead(companyId) {
                         dedicatedTCId,
                         adminTCId,
                         date: new Date(),
-                        assignedById
+                        assignedById,
+                        addedByName,
+                        addedByRole
                     }
                 });
                 successCount++;
@@ -856,14 +1142,44 @@ async function getTelecallerForLead(companyId) {
                 }
             });
 
-            // Update lead's assocStatus
+            // Update lead's assocStatus based on outcome and booking details
+            let finalAssocStatus = outcome;
+            if (outcome === "SITEVISIT" && interested === "YES" && bookingStatus) {
+                finalAssocStatus = bookingStatus;
+            }
+
             await prisma.lead.update({
                 where: { id },
                 data: { 
-                    assocStatus: outcome,
+                    assocStatus: finalAssocStatus,
                     notes: notes || undefined 
                 }
             });
+
+            // Notify all Admins
+            const admins = await prisma.admin.findMany({ where: { companyId } });
+            let outcomeText = outcome;
+            if (outcome === "SITEVISIT") {
+                if (interested === "YES" && bookingStatus) {
+                    outcomeText = bookingStatus === "BOOKED" ? "BOOKED" : "PAYMENT PENDING";
+                } else {
+                    outcomeText = "SITE VISIT DONE";
+                }
+            } else if (outcome === "FOLLOWUP") {
+                outcomeText = "FOLLOWUP REQUIRED";
+            } else if (outcome === "COLD") {
+                outcomeText = "GONE COLD";
+            }
+
+            for (const admin of admins) {
+                await createCrmNotification({
+                    title: "Lead Meeting Outcome Updated",
+                    body: `Associate ${req.user.firstName || req.user.username} updated lead ${lead.leadName} to ${outcomeText}.`,
+                    notificationType: "LEAD_OUTCOME_UPDATE",
+                    companyId: lead.companyId,
+                    adminId: admin.id
+                });
+            }
 
             return reply.send({ success: true, meeting });
         } catch (err) {
@@ -882,7 +1198,7 @@ async function getTelecallerForLead(companyId) {
 
             const isTC = userType === "telecaller";
             const isAdminTC = userType === "admin" && roleName === "TELECALLER ADMIN";
-            const isAdmin = (userType === "admin" || userType === "clientadmin" || userType === "superadmin") && !isAdminTC;
+            const isAdmin = (userType === "admin" || userType === "clientadmin" || userType === "superadmin");
 
             if (!isAdmin) {
                 // If not admin, only show meetings logged by this associate
