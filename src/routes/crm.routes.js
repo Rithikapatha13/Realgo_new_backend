@@ -930,8 +930,10 @@ async function getTelecallerForLead(companyId) {
 
             const isTC = userType === "telecaller";
 
-            const callLogWhere = { lead: { companyId } };
-            const meetingWhere = { lead: { companyId } };
+            const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+            const callLogWhere = { lead: { companyId }, createdAt: { gte: twentyFourHoursAgo } };
+            const meetingWhere = { lead: { companyId }, createdAt: { gte: twentyFourHoursAgo } };
 
             if (isTC) {
                 callLogWhere.lead.dedicatedTCId = req.user.userId;

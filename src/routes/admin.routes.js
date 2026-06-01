@@ -25,55 +25,32 @@ export default async function adminRoutes(fastify) {
             let items = [];
             let total = 0;
 
-            if (isClientAdmin) {
-                // Return other ClientAdmins for this company
-                const where = { companyId };
-                if (name) {
-                    where.OR = [
-                        { username: { contains: name, mode: 'insensitive' } },
-                        { firstName: { contains: name, mode: 'insensitive' } },
-                        { lastName: { contains: name, mode: 'insensitive' } }
-                    ];
-                }
-
-                [items, total] = await Promise.all([
-                    prisma.clientAdmin.findMany({
-                        where,
-                        orderBy: { createdAt: "desc" },
-                        skip,
-                        take
-                    }),
-                    prisma.clientAdmin.count({ where })
-                ]);
-            } else {
-                // Standard Admin table flow
-                const where = { companyId };
-                
-                // PEER FILTERING: If the user has a role assigned, they only see peers with the SAME role ID.
-                if (roleId) {
-                    // console.log(`[DEBUG] Filtering admins by roleId: ${roleId} for user ${req.user.userId}`);
-                    where.roleId = roleId;
-                }
-
-                if (name) {
-                    where.OR = [
-                        { username: { contains: name, mode: 'insensitive' } },
-                        { firstName: { contains: name, mode: 'insensitive' } },
-                        { lastName: { contains: name, mode: 'insensitive' } }
-                    ];
-                }
-
-                [items, total] = await Promise.all([
-                    prisma.admin.findMany({
-                        where,
-                        orderBy: { createdAt: "desc" },
-                        skip,
-                        take,
-                        include: { role: true }
-                    }),
-                    prisma.admin.count({ where }),
-                ]);
+            const where = { companyId };
+            
+            // PEER FILTERING: If a standard admin (not clientadmin) has a role assigned, they only see peers with the SAME role ID.
+            if (!isClientAdmin && roleId) {
+                // console.log(`[DEBUG] Filtering admins by roleId: ${roleId} for user ${req.user.userId}`);
+                where.roleId = roleId;
             }
+
+            if (name) {
+                where.OR = [
+                    { username: { contains: name, mode: 'insensitive' } },
+                    { firstName: { contains: name, mode: 'insensitive' } },
+                    { lastName: { contains: name, mode: 'insensitive' } }
+                ];
+            }
+
+            [items, total] = await Promise.all([
+                prisma.admin.findMany({
+                    where,
+                    orderBy: { createdAt: "desc" },
+                    skip,
+                    take,
+                    include: { role: true }
+                }),
+                prisma.admin.count({ where }),
+            ]);
 
             return reply.send({
                 success: true,
@@ -102,7 +79,8 @@ export default async function adminRoutes(fastify) {
                 return reply.code(400).send({ success: false, message: "Admin with this phone already exists in this company" });
             }
 
-            const hashedPassword = await bcrypt.hash(body.password || "Realgo@123", saltRounds);
+            const rawPassword = (body.password && body.password.trim() !== "") ? body.password : "Realgo@123";
+            const hashedPassword = await bcrypt.hash(rawPassword, saltRounds);
 
             const admin = await prisma.admin.create({
                 data: {
