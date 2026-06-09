@@ -15,7 +15,7 @@ export default async function commonRoutes(fastify) {
         return res.code(400).send({ success: false, message: "fileType is required" });
       }
 
-      const ext = fileType.split("/")[1];
+      const ext = fileType.split("/")[1] || "png";
       const key = `realgo/images/${crypto.randomUUID()}.${ext}`;
 
       const command = new PutObjectCommand({
@@ -40,6 +40,8 @@ export default async function commonRoutes(fastify) {
       return res.code(500).send({ success: false, error: err.message });
     }
   });
+
+
 
   fastify.post("/update-profile", async (req, res) => {
     try {
@@ -278,7 +280,19 @@ export default async function commonRoutes(fastify) {
           orderBy: { createdAt: "desc" },
           take: 50
         });
-      } else if (userType === "admin" || userType === "clientadmin") {
+      } else if (userType === "clientadmin") {
+        notifications = await fastify.prisma.notification.findMany({
+          where: {
+            companyId,
+            OR: [
+              { adminId: userId },
+              { adminId: null, notificationType: "PLOT_BOOKED" }
+            ]
+          },
+          orderBy: { createdAt: "desc" },
+          take: 50
+        });
+      } else if (userType === "admin") {
         notifications = await fastify.prisma.notification.findMany({
           where: { companyId, adminId: userId },
           orderBy: { createdAt: "desc" },
@@ -308,7 +322,12 @@ export default async function commonRoutes(fastify) {
       let where = { companyId };
       if (userType === "telecaller") {
         where.telecallerId = userId;
-      } else if (userType === "admin" || userType === "clientadmin") {
+      } else if (userType === "clientadmin") {
+        where.OR = [
+          { adminId: userId },
+          { adminId: null, notificationType: "PLOT_BOOKED" }
+        ];
+      } else if (userType === "admin") {
         where.adminId = userId;
       } else {
         where.userId = userId;
@@ -323,6 +342,101 @@ export default async function commonRoutes(fastify) {
     } catch (err) {
       req.log.error(err);
       return reply.code(500).send({ success: false, message: "Failed to update notifications" });
+    }
+  });
+
+  // POST /api/common/push-tokens - Register or update FCM push token
+  fastify.post("/push-tokens", { preHandler: [authMiddleware] }, async (req, reply) => {
+    try {
+      const { fcmToken } = req.body;
+      const { userId, userType, companyId } = req.user;
+
+      if (!fcmToken) {
+        return reply.code(400).send({ success: false, message: "fcmToken is required" });
+      }
+
+      const data = {
+        fcmToken,
+        companyId,
+        status: "ACTIVE"
+      };
+
+      if (userType === "clientadmin" || userType === "admin") {
+        data.adminId = userId;
+      } else if (userType === "telecaller") {
+        data.telecallerId = userId;
+      } else {
+        data.userId = userId;
+      }
+
+      const existing = await fastify.prisma.pushNotification.findFirst({
+        where: { fcmToken, companyId }
+      });
+
+      let record;
+      if (existing) {
+        record = await fastify.prisma.pushNotification.update({
+          where: { id: existing.id },
+          data: {
+            ...data,
+            lastRequest: new Date(),
+            updatedAt: new Date()
+          }
+        });
+      } else {
+        record = await fastify.prisma.pushNotification.create({
+          data
+        });
+      }
+
+      console.log(`[FCM] Registered token for ${userType} ${userId}.`);
+      return reply.send({ success: true, data: record });
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send({ success: false, message: "Failed to register push token" });
+    }
+  });
+
+  // DELETE /api/common/push-tokens - Deregister FCM token
+  fastify.delete("/push-tokens", { preHandler: [authMiddleware] }, async (req, reply) => {
+    try {
+      const { fcmToken } = req.body;
+      const { companyId } = req.user;
+
+      if (!fcmToken) {
+        return reply.code(400).send({ success: false, message: "fcmToken is required" });
+      }
+
+      await fastify.prisma.pushNotification.deleteMany({
+        where: { fcmToken, companyId }
+      });
+
+      console.log("[FCM] Deregistered token.");
+      return reply.send({ success: true, message: "Push token deregistered" });
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send({ success: false, message: "Failed to deregister push token" });
+    }
+  });
+
+  // POST /api/common/test-push - Trigger a test push notification
+  fastify.post("/test-push", { preHandler: [authMiddleware] }, async (req, reply) => {
+    try {
+      const { title, body, userId } = req.body;
+      const targetUserId = userId || req.user.userId;
+
+      const { sendPushNotification } = await import("../utils/pushNotifier.js");
+      const res = await sendPushNotification(
+        targetUserId,
+        title || "Test Push Title",
+        body || "This is a test message from RealGo.",
+        { test: "true" }
+      );
+
+      return reply.send({ success: true, message: "Test push completed", result: res });
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send({ success: false, message: "Test push failed", error: err.message });
     }
   });
 }

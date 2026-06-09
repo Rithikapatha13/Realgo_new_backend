@@ -32,6 +32,9 @@ import reminderRoutes from "./routes/reminder.routes.js";
 import { projectStatusRoutes } from "./routes/projectStatus.routes.js";
 import { associateFinanceRoutes } from "./routes/associateFinance.routes.js";
 import telecallerRoutes from "./routes/telecaller.routes.js";
+import { phaseRoutes } from "./routes/phase.routes.js";
+import followupRoutes from "./routes/followup.routes.js";
+import autoRemindersCronJob from "./routes/autoRemindersCronJob.js";
 
 const app = Fastify({
   logger: true,
@@ -109,7 +112,10 @@ app.register(requestRoutes, { prefix: "/api" });
 app.register(siteVisitRoutes, { prefix: "/api" });
 app.register(noteRoutes, { prefix: "/api" });
 app.register(reminderRoutes, { prefix: "/api" });
+app.register(followupRoutes, { prefix: "/api" });
 app.register(associateFinanceRoutes, { prefix: "/api/associate-finance" });
+app.register(phaseRoutes, { prefix: "/api" });
+app.register(autoRemindersCronJob);
 
 
 // Start server
@@ -122,3 +128,4 @@ try {
   console.error(err);
   process.exit(1);
 }
+// trigger reload

@@ -185,6 +185,9 @@ export const siteVisitRoutes = async (fastify, options) => {
         return res.code(400).send({ success: false, message: "Missing required fields" });
       }
 
+      const isOps = userType === 'admin' || userType === 'superadmin';
+      const status = isOps ? 'APPROVED' : 'PENDING';
+
       const item = await fastify.prisma.siteVisit.create({
         data: {
           leadName,
@@ -195,6 +198,7 @@ export const siteVisitRoutes = async (fastify, options) => {
           projectId,
           userId, // Mandatory in schema
           telecallerId: userType === 'telecaller' ? userId : null,
+          status,
           changeLog: JSON.stringify([{
             action: 'CREATED',
             at: new Date(),
@@ -232,6 +236,11 @@ export const siteVisitRoutes = async (fastify, options) => {
         }
       ];
 
+      let updatedStatus = existing.status;
+      if (existing.status === 'APPROVED' && siteVisitPicture) {
+        updatedStatus = 'VISITED';
+      }
+
       const item = await fastify.prisma.siteVisit.update({
         where: { id },
         data: {
@@ -241,6 +250,7 @@ export const siteVisitRoutes = async (fastify, options) => {
           time,
           siteVisitPicture,
           projectId,
+          status: updatedStatus,
           changeLog: JSON.stringify(newLog)
         }
       });
@@ -258,6 +268,48 @@ export const siteVisitRoutes = async (fastify, options) => {
       const { id } = req.params;
       await fastify.prisma.siteVisit.delete({ where: { id } });
       return res.code(200).send({ success: true, message: "Site visit deleted successfully" });
+    } catch (err) {
+      req.log.error(err);
+      return res.code(500).send({ success: false, error: err.message });
+    }
+  });
+
+  // PATCH approve/reject/complete site visit status
+  fastify.patch("/site-visits/:id/status", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body; // APPROVED, REJECTED, COMPLETED
+      const { id: approvedBy } = req.user;
+
+      if (!['APPROVED', 'REJECTED', 'COMPLETED'].includes(status)) {
+        return res.code(400).send({ success: false, message: "Invalid status value" });
+      }
+
+      const existing = await fastify.prisma.siteVisit.findUnique({ where: { id } });
+      if (!existing) {
+        return res.code(404).send({ success: false, message: "Site visit not found" });
+      }
+
+      const currentLog = existing.changeLog ? JSON.parse(existing.changeLog) : [];
+      const newLog = [
+        ...currentLog,
+        {
+          action: `STATUS_${status}`,
+          at: new Date(),
+          by: approvedBy
+        }
+      ];
+
+      const item = await fastify.prisma.siteVisit.update({
+        where: { id },
+        data: {
+          status,
+          approvedBy,
+          changeLog: JSON.stringify(newLog)
+        }
+      });
+
+      return res.code(200).send({ success: true, item, message: `Site visit status updated to ${status}` });
     } catch (err) {
       req.log.error(err);
       return res.code(500).send({ success: false, error: err.message });

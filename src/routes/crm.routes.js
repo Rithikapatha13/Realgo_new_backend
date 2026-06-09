@@ -624,8 +624,17 @@ async function getTelecallerForLead(companyId) {
                                 userId: selected.id
                             });
 
-                            // Notify all Admins
-                            const admins = await prisma.admin.findMany({ where: { companyId } });
+                            // Notify all Admins who have CRM module access
+                            const admins = await prisma.admin.findMany({
+                                where: {
+                                    companyId,
+                                    role: {
+                                        modules: {
+                                            has: "CRM"
+                                        }
+                                    }
+                                }
+                            });
                             for (const admin of admins) {
                                 await createCrmNotification({
                                     title: "Lead Escalated to Associate",
@@ -727,8 +736,17 @@ async function getTelecallerForLead(companyId) {
                     userId: associateId
                 });
 
-                // Notify all Admins
-                const admins = await prisma.admin.findMany({ where: { companyId } });
+                // Notify all Admins who have CRM module access
+                const admins = await prisma.admin.findMany({
+                    where: {
+                        companyId,
+                        role: {
+                            modules: {
+                                has: "CRM"
+                            }
+                        }
+                    }
+                });
                 for (const admin of admins) {
                     await createCrmNotification({
                         title: "Lead Transferred to Associate",
@@ -1158,8 +1176,17 @@ async function getTelecallerForLead(companyId) {
                 }
             });
 
-            // Notify all Admins
-            const admins = await prisma.admin.findMany({ where: { companyId } });
+            // Notify all Admins who have CRM module access
+            const admins = await prisma.admin.findMany({
+                where: {
+                    companyId,
+                    role: {
+                        modules: {
+                            has: "CRM"
+                        }
+                    }
+                }
+            });
             let outcomeText = outcome;
             if (outcome === "SITEVISIT") {
                 if (interested === "YES" && bookingStatus) {

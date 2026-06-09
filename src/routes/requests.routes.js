@@ -154,6 +154,52 @@ export default async function requestRoutes(fastify) {
         }
       });
 
+      // Dispatch notifications to Admins
+      try {
+        const reqUser = await fastify.prisma.user.findUnique({
+          where: { id: requestedById },
+          select: { firstName: true, lastName: true, username: true, companyId: true, company: { select: { company: true } } }
+        });
+
+        if (reqUser) {
+          const companyId = reqUser.companyId;
+          const companyName = reqUser.company?.company || "Realgo";
+          const senderName = `${reqUser.firstName || ""} ${reqUser.lastName || ""}`.trim() || reqUser.username;
+
+          // Fetch all sub-admins in this company who have ADMIN or CRM module access
+          const admins = await fastify.prisma.admin.findMany({
+            where: {
+              companyId,
+              role: {
+                modules: {
+                  hasSome: ["ADMIN", "CRM"]
+                }
+              }
+            }
+          });
+
+
+
+          // Create notifications for sub-admins
+          for (const admin of admins) {
+            await fastify.prisma.notification.create({
+              data: {
+                adminId: admin.id,
+                title: "New Plot Booking Request",
+                body: `${senderName} has submitted a new plot booking request for "${requestedName || "Customer"}".`,
+                notificationType: "NEW_REQUEST",
+                companyId,
+                companyName,
+                status: "UNREAD",
+                isRead: false
+              }
+            });
+          }
+        }
+      } catch (err) {
+        fastify.log.error("Failed to notify admins of request: " + err.message);
+      }
+
       return reply.code(201).send({ success: true, data: newRequest });
     } catch (err) {
       req.log.error(err);
@@ -186,10 +232,207 @@ export default async function requestRoutes(fastify) {
       }
 
       // Otherwise update the Request table
+      const request = await fastify.prisma.request.findUnique({
+        where: { id }
+      });
+
+      if (!request) {
+        return reply.code(404).send({ success: false, message: "Request not found" });
+      }
+
       const updated = await fastify.prisma.request.update({
         where: { id },
         data: { status }
       });
+
+      // If PLOT_BOOKING is APPROVED, automatically execute plot booking and auto-reminder creation
+      if (status === "APPROVED" && request.requestType === "PLOT_BOOKING" && request.message) {
+        try {
+          const projectMatch = request.message.match(/• Project:\s*(.*)/);
+          const plotNumberMatch = request.message.match(/• Plot Number:\s*(.*)/);
+          const contactMatch = request.message.match(/• Contact:\s*(.*)/);
+          const addressMatch = request.message.match(/• Address:\s*(.*)/);
+
+          if (projectMatch && plotNumberMatch) {
+            const projectName = projectMatch[1].replace(/\r$/, '').trim();
+            const plotNumber = plotNumberMatch[1].replace(/\r$/, '').trim();
+
+            const reqUser = await fastify.prisma.user.findUnique({
+              where: { id: request.userId },
+              select: { companyId: true, referId: true, teamHeadId: true, userAuthId: true }
+            });
+
+            if (reqUser && reqUser.companyId) {
+              const plot = await fastify.prisma.plot.findFirst({
+                where: {
+                  plotNumber,
+                  projectName,
+                  companyId: reqUser.companyId
+                },
+                include: { phase: true }
+              });
+
+              if (plot && plot.status === "AVAILABLE") {
+                const customerName = request.requestedName || "Customer";
+                const customerContact = contactMatch ? contactMatch[1].replace(/\r$/, '').trim() : "";
+                const customerAddress = addressMatch ? addressMatch[1].replace(/\r$/, '').trim() : "";
+
+                // Parse booking plan days (15, 45, 90, 120) from notes
+                let plotBookingPlan = "15";
+                const noteMatch = request.message.match(/Additional Note:\s*([\s\S]*)/i);
+                if (noteMatch) {
+                  const noteText = noteMatch[1];
+                  const daysMatch = noteText.match(/\b(15|45|90|120)\b/);
+                  if (daysMatch) {
+                    plotBookingPlan = daysMatch[1];
+                  }
+                }
+
+                const totalCost = parseFloat(plot.totalCost) || 0;
+                const remainingAmount = totalCost;
+
+                // Update Plot record
+                await fastify.prisma.plot.update({
+                  where: { id: plot.id },
+                  data: {
+                    customerName,
+                    customerContact,
+                    customerAddress,
+                    status: "BOOKED",
+                    associateId: request.userId,
+                    associateUserAuthId: reqUser.userAuthId || null,
+                    referId: reqUser.referId || null,
+                    teamHeadId: reqUser.teamHeadId || null,
+                    plotBookingPlan,
+                    paidAmount: "0",
+                    remainingAmount: remainingAmount.toString(),
+                    bookingDate: new Date(),
+                    registeredDate: null,
+                  }
+                });
+
+                // Generate AutoReminders
+                const totalBookingDays = parseInt(plotBookingPlan, 10) || 0;
+                if (totalBookingDays > 0) {
+                  const bookingDate = new Date();
+                  let reminderMessages = {};
+
+                  if (totalBookingDays === 15) {
+                    reminderMessages = {
+                      [Math.floor(totalBookingDays * 0.25)]: { type: "first_reminder", message: `Reminder: ${Math.floor(totalBookingDays * 0.25)} days left before Agreement Day for Plot ${plot.plotNumber} in ${plot.projectName}.` },
+                      [Math.floor(totalBookingDays * 0.50)]: { type: "agreement_day", message: `Today is Agreement Day for Plot ${plot.plotNumber} in ${plot.projectName}. Please complete the necessary formalities.` },
+                      [Math.floor(totalBookingDays * 0.75)]: { type: "third_reminder", message: `Reminder: ${totalBookingDays - Math.floor(totalBookingDays * 0.75)} days left for Registration Day for Plot ${plot.plotNumber} in ${plot.projectName}. Ensure all payments are in order.` },
+                      [totalBookingDays]: { type: "registration_day", message: `Today is Registration Day for Plot ${plot.plotNumber} in ${plot.projectName}. Please proceed with the final registration process.` },
+                    };
+                  } else {
+                    const agreementDay = Math.floor(totalBookingDays * 0.50);
+                    const firstReminder = agreementDay - 10;
+                    const thirdReminder = totalBookingDays - 10;
+                    const registrationDay = totalBookingDays;
+
+                    reminderMessages = {
+                      [firstReminder]: { type: "first_reminder", message: `Reminder: 10 days left before Agreement Day for Plot ${plot.plotNumber} in ${plot.projectName}.` },
+                      [agreementDay]: { type: "agreement_day", message: `Today is Agreement Day for Plot ${plot.plotNumber} in ${plot.projectName}. Please complete the necessary formalities.` },
+                      [thirdReminder]: { type: "third_reminder", message: `Reminder: 10 days left before Registration Day for Plot ${plot.plotNumber} in ${plot.projectName}. Ensure all payments are in order.` },
+                      [registrationDay]: { type: "registration_day", message: `Today is Registration Day for Plot ${plot.plotNumber} in ${plot.projectName}. Please proceed with the final registration process.` },
+                    };
+                  }
+
+                  const reminderIntervals = Object.keys(reminderMessages).map(Number);
+                  for (const days of reminderIntervals) {
+                    const reminderDate = new Date(bookingDate);
+                    reminderDate.setDate(reminderDate.getDate() + days);
+
+                    await fastify.prisma.autoReminder.create({
+                      data: {
+                        plotId: plot.id,
+                        plotNumber: plot.plotNumber,
+                        projectName: plot.projectName,
+                        phaseName: plot.phase?.phaseName || null,
+                        associateId: request.userId,
+                        type: reminderMessages[days].type,
+                        reminderDate,
+                        description: reminderMessages[days].message,
+                        companyId: plot.companyId,
+                      }
+                    });
+
+                    // Reminders for Upliner and Team Head
+                    if (reminderMessages[days].type === "agreement_day" || reminderMessages[days].type === "registration_day") {
+                      const keyUsers = [...new Set([reqUser.referId, reqUser.teamHeadId].filter(Boolean))];
+                      for (const uId of keyUsers) {
+                        const userType = uId === reqUser.teamHeadId ? "teamhead" : "upliner";
+                        const customMessage = userType === "teamhead"
+                          ? `Reminder for Team Head: ${reminderMessages[days].message}`
+                          : `Reminder for Upliner: ${reminderMessages[days].message}`;
+
+                        await fastify.prisma.autoReminder.create({
+                          data: {
+                            plotId: plot.id,
+                            plotNumber: plot.plotNumber,
+                            projectName: plot.projectName,
+                            phaseName: plot.phase?.phaseName || null,
+                            associateId: uId,
+                            type: reminderMessages[days].type,
+                            reminderDate,
+                            description: customMessage,
+                            companyId: plot.companyId,
+                          }
+                        });
+                      }
+                    }
+                  }
+
+                  // Add admin check reminder (1 day after final registration day)
+                  const adminReminderDate = new Date(bookingDate);
+                  adminReminderDate.setDate(adminReminderDate.getDate() + totalBookingDays + 1);
+
+                  await fastify.prisma.autoReminder.create({
+                    data: {
+                      plotId: plot.id,
+                      plotNumber: plot.plotNumber,
+                      projectName: plot.projectName,
+                      phaseName: plot.phase?.phaseName || null,
+                      associateId: request.userId,
+                      type: "admin_check",
+                      reminderDate: adminReminderDate,
+                      description: `Admin Reminder: Please review and update the status of Plot ${plot.plotNumber} in ${plot.projectName}.`,
+                      companyId: plot.companyId,
+                    }
+                  });
+                }
+              }
+            }
+          }
+        } catch (err) {
+          fastify.log.error("Automatic booking on request approval failed: " + err.message);
+        }
+      }
+
+      // Send notification to requesting associate
+      try {
+        const reqUser = await fastify.prisma.user.findUnique({
+          where: { id: request.requestedById },
+          select: { companyId: true, company: { select: { company: true } } }
+        });
+        
+        if (reqUser) {
+          await fastify.prisma.notification.create({
+            data: {
+              userId: request.requestedById,
+              title: `Request ${status === "APPROVED" ? "Approved" : "Rejected"}`,
+              body: `Your ${request.requestType.replace("_", " ")} request for "${request.requestedName || "Plot"}" has been ${status.toLowerCase()}.`,
+              notificationType: "REQUEST_STATUS",
+              companyId: reqUser.companyId,
+              companyName: reqUser.company?.company || "Realgo",
+              status: "UNREAD",
+              isRead: false
+            }
+          });
+        }
+      } catch (err) {
+        fastify.log.error("Failed to create request status notification: " + err.message);
+      }
 
       return reply.send({
         success: true,
