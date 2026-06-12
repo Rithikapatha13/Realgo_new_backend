@@ -1,6 +1,50 @@
 import { generateToken } from "../utils/jwt.js";
 import { comparePassword, hashPassword } from "../utils/password.js";
 
+async function autoAssignPendingLeadsForTelecaller(prisma, telecallerId, companyId, isDedicatedTC) {
+  try {
+    const MAX_CAPACITY = 10;
+    
+    // Count current active leads assigned to this telecaller
+    const activeCount = await prisma.lead.count({
+      where: {
+        companyId,
+        OR: [
+          isDedicatedTC ? { dedicatedTCId: telecallerId } : null,
+          !isDedicatedTC ? { adminTCId: telecallerId } : null
+        ].filter(Boolean)
+      }
+    });
+
+    const slotsAvailable = MAX_CAPACITY - activeCount;
+    if (slotsAvailable <= 0) return;
+
+    // Find oldest unassigned leads in the company
+    const unassignedLeads = await prisma.lead.findMany({
+      where: {
+        companyId,
+        dedicatedTCId: null,
+        adminTCId: null
+      },
+      orderBy: { createdAt: "asc" },
+      take: slotsAvailable
+    });
+
+    if (unassignedLeads.length > 0) {
+      const leadIds = unassignedLeads.map(l => l.id);
+      await prisma.lead.updateMany({
+        where: { id: { in: leadIds } },
+        data: {
+          dedicatedTCId: isDedicatedTC ? telecallerId : null,
+          adminTCId: !isDedicatedTC ? telecallerId : null
+        }
+      });
+    }
+  } catch (err) {
+    console.error("Auto assign pending leads failed:", err);
+  }
+}
+
 export default async function authRoutes(fastify) {
   // =====================================================
   // IDENTIFY USER BY PHONE
@@ -329,6 +373,22 @@ export default async function authRoutes(fastify) {
           });
         }
       }
+
+      // Update online status and assign pending leads
+      if (userType === "telecaller") {
+        await fastify.prisma.telecaller.update({
+          where: { id: authUser.id },
+          data: { isOnline: true, availability: "AVAILABLE" }
+        });
+        await autoAssignPendingLeadsForTelecaller(fastify.prisma, authUser.id, companyId, true);
+      } else if (userType === "admin") {
+        const roleName = (authUser.role?.roleName || "").toUpperCase();
+        if (roleName.includes("TELECALLER")) {
+          // Admin model does not have isOnline or availability fields, so we only run auto-assignment.
+          await autoAssignPendingLeadsForTelecaller(fastify.prisma, authUser.id, companyId, false);
+        }
+      }
+
 
       // ---------------- TOKEN ----------------
       const tokenPayload = {

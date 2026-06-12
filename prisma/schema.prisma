@@ -90,6 +90,7 @@ model User {
   callLogs        CallLog[]  @relation("UserCallLogs")
   meetings        Meeting[]  @relation("UserMeetings")
   activities      Activity[] @relation("UserActivities")
+  autoReminders   AutoReminder[] @relation("UserAutoReminders")
 
   @@index([companyId])
   @@index([roleId])
@@ -141,6 +142,8 @@ model Admin {
   // CRM Relations
   telecallerLeads  Lead[]      @relation("AdminTCLeads")
   callLogs         CallLog[]   @relation("AdminTCCallLogs")
+  notifications    Notification[] @relation("AdminNotifications")
+  pushNotifications PushNotification[] @relation("AdminPushNotifications")
 }
 
 model Telecaller {
@@ -316,6 +319,7 @@ model Company {
   associateContributions AssociateContribution[]
   vehicles           Vehicle[]
   vehicleSiteVisits  VehicleSiteVisit[]
+  autoReminders      AutoReminder[]
 
   @@index([status])
 }
@@ -384,7 +388,7 @@ model Gallery {
 
 model Notification {
   id               String   @id @default(uuid())
-  userId           String
+  userId           String?
   title            String
   body             String
   notificationType String
@@ -399,6 +403,8 @@ model Notification {
   user             User?    @relation("UserNotifications", fields: [userId], references: [id])
   telecallerId     String?
   telecaller       Telecaller? @relation("TelecallerNotifications", fields: [telecallerId], references: [id])
+  adminId          String?
+  admin            Admin?   @relation("AdminNotifications", fields: [adminId], references: [id])
 
   @@index([userId])
   @@index([companyId])
@@ -513,6 +519,7 @@ model Plot {
   company             Company   @relation(fields: [companyId], references: [id])
   phase               Phase?    @relation(fields: [phaseId], references: [id])
   project             Project   @relation(fields: [projectId], references: [id])
+  autoReminders       AutoReminder[]
 
   @@index([projectId])
   @@index([phaseId])
@@ -602,6 +609,8 @@ model Lead {
   associate    User?   @relation("AssociateLeads", fields: [associateId], references: [id])
   assignedById String?
   assignedBy   User?   @relation("AdminAssignments", fields: [assignedById], references: [id])
+  addedByName  String?
+  addedByRole  String?
 
   callLogs CallLog[]
   meetings Meeting[]
@@ -730,7 +739,8 @@ model SiteVisit {
 
 model PushNotification {
   id            String   @id @default(uuid())
-  userId        String
+  userId        String?
+  adminId       String?
   fcmToken      String
   lastRequest   DateTime @default(now())
   timeStamp     DateTime @default(now())
@@ -743,8 +753,10 @@ model PushNotification {
   user          User?    @relation("UserPushNotifications", fields: [userId], references: [id])
   telecallerId  String?
   telecaller    Telecaller? @relation("TelecallerPushNotifications", fields: [telecallerId], references: [id])
+  admin         Admin?   @relation("AdminPushNotifications", fields: [adminId], references: [id])
 
   @@index([userId])
+  @@index([adminId])
   @@index([companyId])
 }
 
@@ -1308,3 +1320,30 @@ model VehicleSiteVisit {
   @@index([companyId])
   @@index([associateId])
 }
+
+model AutoReminder {
+  id           String   @id @default(uuid())
+  plotId       String   @map("plot_id")
+  plotNumber   String   @map("plot_number")
+  projectName  String?  @map("project_name")
+  phaseName    String?  @map("phase_name")
+  associateId  String   @map("associate_id")
+  type         String?
+  description  String
+  reminderDate DateTime @map("reminder_date")
+  status       String   @default("PENDING")
+  companyId    String   @map("company_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  plot         Plot     @relation(fields: [plotId], references: [id], onDelete: Cascade)
+  user         User     @relation("UserAutoReminders", fields: [associateId], references: [id], onDelete: Cascade)
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([plotId])
+  @@index([associateId])
+  @@index([companyId])
+  @@index([status])
+  @@index([reminderDate])
+}
+

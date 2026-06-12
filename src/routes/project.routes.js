@@ -138,4 +138,63 @@ export async function projectRoutes(fastify) {
             return res.code(500).send({ success: false, message: "Error updating project" });
         }
     });
+
+    // POST /api/projects - Create a new project
+    fastify.post("/projects", { preHandler: authMiddleware }, async (req, res) => {
+        try {
+            const { companyId } = req.user;
+            const {
+                projectName,
+                projectAddress,
+                projectDescription,
+                projectStatusId,
+                latitude,
+                longitude,
+                projectVirtualViewLink,
+                projectWebsiteUrl,
+                projectImage,
+            } = req.body;
+
+            if (!projectName || !projectAddress || !projectStatusId) {
+                return res.code(400).send({
+                    success: false,
+                    message: "Project name, address, and status are required"
+                });
+            }
+
+            const newProject = await fastify.prisma.project.create({
+                data: {
+                    projectName,
+                    projectAddress,
+                    projectDescription: projectDescription || null,
+                    projectStatusId,
+                    companyId,
+                    latitude: latitude || null,
+                    longitude: longitude || null,
+                    projectVirtualViewLink: projectVirtualViewLink || null,
+                    projectWebsiteUrl: projectWebsiteUrl || null,
+                    projectImage: projectImage || null,
+                    sliders: [],
+                    images: [],
+                    brochures: [],
+                    flyers: [],
+                    videos: [],
+                    layoutImage: [],
+                    highlights: [],
+                    approvals: [],
+                    approvalCopies: [],
+                    locationHighlights: [],
+                    qrCode: [],
+                },
+                include: {
+                    projectStatus: { select: { statusName: true } }
+                }
+            });
+
+            return { success: true, message: "Project created successfully", project: newProject, status: 201 };
+        } catch (error) {
+            fastify.log.error(error);
+            return res.code(500).send({ success: false, message: "Error creating project" });
+        }
+    });
 }

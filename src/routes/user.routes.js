@@ -4,11 +4,22 @@ import XLSX from "xlsx";
 export default async function userRoutes(fastify) {
     fastify.addHook("preHandler", authMiddleware);
 
+    // Helper: Determine if caller is a telecalleradmin
+    function getModelAndStatusType(req) {
+        const userRole = req.user.roleName || req.user.role?.roleName || req.user.role || "";
+        const isTelecallerAdmin = userRole.toLowerCase().replace(/[\s_]/g, "").includes("telecalleradmin");
+        return {
+            model: isTelecallerAdmin ? fastify.prisma.telecaller : fastify.prisma.user,
+            isTelecallerAdmin
+        };
+    }
+
     // Get simple list of user names and IDs for the company
     fastify.get("/names", async (req, reply) => {
         try {
             const { companyId } = req.user;
             const { role, search } = req.query;
+            const { model } = getModelAndStatusType(req);
 
             const where = { companyId };
 
@@ -24,7 +35,7 @@ export default async function userRoutes(fastify) {
                 ];
             }
 
-            const users = await fastify.prisma.user.findMany({
+            const users = await model.findMany({
                 where,
                 select: {
                     id: true,
@@ -99,6 +110,7 @@ export default async function userRoutes(fastify) {
         try {
             const { companyId } = req.user;
             const { page = 1, size = 10, name, status, role, username, phone, id, userAuthId, sortField = 'createdAt', sortOrder = 'desc' } = req.query;
+            const { model, isTelecallerAdmin } = getModelAndStatusType(req);
 
             const skip = (Number(page) - 1) * Number(size);
             const take = Number(size);
@@ -107,7 +119,15 @@ export default async function userRoutes(fastify) {
 
             if (id) where.id = id;
             if (userAuthId) where.userAuthId = { contains: userAuthId, mode: 'insensitive' };
-            if (status) where.status = status;
+            
+            if (status) {
+                if (isTelecallerAdmin) {
+                    where.status = (status === "REJECT" || status === "INACTIVE" || status === "HOLD") ? "NONE" : status;
+                } else {
+                    where.status = status;
+                }
+            }
+
             if (role) {
                 if (role.match(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/)) {
                     where.roleId = role;
@@ -126,14 +146,14 @@ export default async function userRoutes(fastify) {
             }
 
             const [items, total] = await Promise.all([
-                fastify.prisma.user.findMany({
+                model.findMany({
                     where,
                     skip,
                     take,
                     include: { role: true },
                     orderBy: { [sortField]: sortOrder }
                 }),
-                fastify.prisma.user.count({ where })
+                model.count({ where })
             ]);
 
             // Enrich with upliner usernames if referId exists
@@ -170,8 +190,9 @@ export default async function userRoutes(fastify) {
         try {
             const { id } = req.params;
             const { companyId } = req.user;
+            const { model } = getModelAndStatusType(req);
 
-            const user = await fastify.prisma.user.findFirst({
+            const user = await model.findFirst({
                 where: { id, companyId },
                 include: { role: true }
             });
@@ -187,13 +208,13 @@ export default async function userRoutes(fastify) {
         }
     });
 
-    // POST /add-associate - Create or update an associate
+    // POST /add-associate - Create or update an associate / telecaller
     fastify.post("/add-associate", async (req, reply) => {
         try {
             const { companyId } = req.user;
             const body = req.body;
-            // The frontend sometimes sends id as recordId when updating
             const targetId = body.id || body.recordId;
+            const { model, isTelecallerAdmin } = getModelAndStatusType(req);
 
             const bcrypt = await import("bcrypt");
             const saltRounds = 10;
@@ -202,6 +223,13 @@ export default async function userRoutes(fastify) {
             const creatorType = (req.user.userType || req.user.role || "").toLowerCase();
             const isCreatorAdmin = creatorType.includes("admin") || creatorType === "superadmin" || creatorType === "companyadmin";
             const defaultStatus = isCreatorAdmin ? "VERIFIED" : "PENDING";
+            
+            let statusValue = body.status || defaultStatus;
+            if (isTelecallerAdmin) {
+                if (statusValue === "REJECT" || statusValue === "INACTIVE" || statusValue === "HOLD") {
+                    statusValue = "NONE";
+                }
+            }
 
             const data = {
                 firstName: body.firstName,
@@ -215,7 +243,7 @@ export default async function userRoutes(fastify) {
                 state: body.state,
                 country: body.country,
                 pinCode: body.pinCode || body.zipCode,
-                status: body.status || defaultStatus,
+                status: statusValue,
                 roleId: body.roleId || body.role,
                 image: body.image || body.img,
                 referId: body.referId || body.refer_id || body.teamHeadId || body.team_head_id || null,
@@ -223,8 +251,8 @@ export default async function userRoutes(fastify) {
                 companyId: companyId,
                 createdById: req.user.userId,
                 dob: (body.dob && !isNaN(new Date(body.dob).getTime())) ? new Date(body.dob) : null,
-                gender: body.gender,
-                bloodGroup: body.bloodGroup,
+                gender: (body.gender && body.gender.trim() !== "") ? body.gender : null,
+                bloodGroup: (body.bloodGroup && body.bloodGroup.trim() !== "") ? body.bloodGroup : null,
                 position: body.designation,
                 aadharNo: body.aadharNo,
                 panNo: body.panNo,
@@ -238,7 +266,6 @@ export default async function userRoutes(fastify) {
                 nomineeRelation: body.nomineeRelation,
             };
 
-
             if (body.password) {
                 data.password = await bcrypt.hash(body.password, saltRounds);
                 data.passwordChanged = true;
@@ -247,7 +274,7 @@ export default async function userRoutes(fastify) {
             let user;
             if (targetId) {
                 // Update
-                user = await fastify.prisma.user.update({
+                user = await model.update({
                     where: { id: targetId },
                     data
                 });
@@ -263,18 +290,18 @@ export default async function userRoutes(fastify) {
                 }
 
                 // Temporary generation of userAuthId (mock format)
-                data.userAuthId = `G-${Date.now().toString().slice(-6)}`;
+                data.userAuthId = isTelecallerAdmin ? `TC-${Date.now().toString().slice(-6)}` : `G-${Date.now().toString().slice(-6)}`;
 
                 // Check phone uniqueness
-                const exists = await fastify.prisma.user.findFirst({ where: { phone: data.phone, companyId } });
+                const exists = await model.findFirst({ where: { phone: data.phone, companyId } });
                 if (exists) {
                     return reply.code(409).send({ success: false, message: "User Auth ID or Phone already exists" });
                 }
 
-                user = await fastify.prisma.user.create({ data });
+                user = await model.create({ data });
             }
 
-            return reply.send({ success: true, message: "User saved successfully", data: user });
+            return reply.send({ success: true, message: "Saved successfully", data: user });
         } catch (err) {
             req.log.error(err);
             const message = err.code === 'P2002'
@@ -284,26 +311,27 @@ export default async function userRoutes(fastify) {
         }
     });
 
-    // DELETE /associate-delete/:id - Delete an associate
+    // DELETE /associate-delete/:id - Delete an associate / telecaller
     fastify.delete("/associate-delete/:id", async (req, reply) => {
         try {
             const { id } = req.params;
             const { companyId } = req.user;
+            const { model } = getModelAndStatusType(req);
 
-            const existing = await fastify.prisma.user.findFirst({ where: { id, companyId } });
+            const existing = await model.findFirst({ where: { id, companyId } });
             if (!existing) {
                 return reply.code(404).send({ success: false, message: "Associate not found" });
             }
 
             // Move the subordinates up
-            await fastify.prisma.user.updateMany({
+            await model.updateMany({
                 where: { referId: id },
                 data: { referId: existing.referId }
             });
 
-            await fastify.prisma.user.delete({ where: { id } });
+            await model.delete({ where: { id } });
 
-            return reply.send({ success: true, message: "User deleted" });
+            return reply.send({ success: true, message: "Deleted successfully" });
         } catch (err) {
             req.log.error(err);
             return reply.code(500).send({ success: false, message: "Internal server error" });
@@ -311,7 +339,7 @@ export default async function userRoutes(fastify) {
     });
 
     // ==========================================
-    // BULK UPLOAD ASSOCIATES
+    // BULK UPLOAD ASSOCIATES / TELECALLERS
     // ==========================================
     fastify.post("/associates/bulk", async (req, reply) => {
         try {
@@ -326,6 +354,7 @@ export default async function userRoutes(fastify) {
             if (!rows.length) return reply.code(400).send({ success: false, message: "File is empty" });
 
             const companyId = req.user.companyId;
+            const { model, isTelecallerAdmin } = getModelAndStatusType(req);
             let successCount = 0;
             const bcrypt = await import("bcrypt");
 
@@ -337,11 +366,11 @@ export default async function userRoutes(fastify) {
                 if (!firstName || !phone) continue;
 
                 // Check phone uniqueness
-                const exists = await fastify.prisma.user.findFirst({ where: { phone, companyId } });
+                const exists = await model.findFirst({ where: { phone, companyId } });
                 if (exists) continue;
 
                 // Generate User Auth ID
-                const userAuthId = `G-${Date.now().toString().slice(-6)}`;
+                const userAuthId = isTelecallerAdmin ? `TC-${Date.now().toString().slice(-6)}` : `G-${Date.now().toString().slice(-6)}`;
 
                 // Password handling
                 const rawPassword = row.password || row.Password || "Realgo@123";
@@ -352,12 +381,12 @@ export default async function userRoutes(fastify) {
                 let username = row.username || row.Username || `${firstName}${lastName}`.toLowerCase().replace(/\s+/g, '');
 
                 // Check if username exists, if so append random to it
-                const usernameExists = await fastify.prisma.user.findFirst({ where: { username, companyId } });
+                const usernameExists = await model.findFirst({ where: { username, companyId } });
                 if (usernameExists) {
                     username = `${username}${Math.floor(Math.random() * 1000)}`;
                 }
 
-                await fastify.prisma.user.create({
+                await model.create({
                     data: {
                         firstName,
                         lastName,
@@ -370,7 +399,7 @@ export default async function userRoutes(fastify) {
                         roleId: row.roleId || row.RoleId || null,
                         referId: row.teamHeadId || row.referId || req.user.userId,
                         teamHeadId: row.teamHeadId || row.referId || req.user.userId,
-                        status: "PENDING",
+                        status: isTelecallerAdmin ? "VERIFIED" : "PENDING",
                         companyId,
                         createdById: req.user.userId, // Matches string to the auth user
                     }
@@ -389,11 +418,18 @@ export default async function userRoutes(fastify) {
     fastify.put("/associate-status", async (req, reply) => {
         try {
             const { id, status } = req.body;
-            const { companyId } = req.user;
+            const { model, isTelecallerAdmin } = getModelAndStatusType(req);
 
-            const user = await fastify.prisma.user.update({
+            let statusValue = status;
+            if (isTelecallerAdmin) {
+                if (status === "REJECT" || status === "INACTIVE" || status === "HOLD") {
+                    statusValue = "NONE";
+                }
+            }
+
+            const user = await model.update({
                 where: { id },
-                data: { status }
+                data: { status: statusValue }
             });
 
             return reply.send({ success: true, message: "Status updated successfully", user });
@@ -407,17 +443,18 @@ export default async function userRoutes(fastify) {
     fastify.put("/associate-promote", async (req, reply) => {
         try {
             const { id, referId, roleId } = req.body;
+            const { model } = getModelAndStatusType(req);
 
             const dataToUpdate = {};
             if (referId !== undefined) dataToUpdate.referId = referId;
             if (roleId !== undefined) dataToUpdate.roleId = roleId;
 
-            const user = await fastify.prisma.user.update({
+            const user = await model.update({
                 where: { id },
                 data: dataToUpdate
             });
 
-            return reply.send({ success: true, message: "Associate promoted", user });
+            return reply.send({ success: true, message: "Promoted successfully", user });
         } catch (err) {
             req.log.error(err);
             return reply.code(500).send({ success: false, message: "Internal server error" });
@@ -428,10 +465,11 @@ export default async function userRoutes(fastify) {
     fastify.post("/reset-password", async (req, reply) => {
         try {
             const { id, password = "Realgo@123" } = req.body;
+            const { model } = getModelAndStatusType(req);
             const bcrypt = await import("bcrypt");
 
             const hashedPassword = await bcrypt.hash(password, 10);
-            await fastify.prisma.user.update({
+            await model.update({
                 where: { id },
                 data: { password: hashedPassword, passwordChanged: true }
             });
