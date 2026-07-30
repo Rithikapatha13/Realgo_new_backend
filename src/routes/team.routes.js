@@ -320,10 +320,47 @@ export default async function teamRoutes(fastify) {
                 prisma.user.count({ where: whereClause }),
             ]);
 
+            // Resolve manager/teamhead names in batch
+            const managerIds = [...new Set(
+                teamMembers
+                    .flatMap(u => [u.teamHeadId, u.referId])
+                    .filter(id => id && id !== '')
+            )];
+
+            const [mUsers, mAdmins, mClientAdmins] = await Promise.all([
+                prisma.user.findMany({
+                    where: { id: { in: managerIds } },
+                    select: { id: true, firstName: true, lastName: true, username: true }
+                }),
+                prisma.admin.findMany({
+                    where: { id: { in: managerIds } },
+                    select: { id: true, firstName: true, lastName: true, username: true }
+                }),
+                prisma.clientAdmin.findMany({
+                    where: { id: { in: managerIds } },
+                    select: { id: true, firstName: true, lastName: true, username: true }
+                })
+            ]);
+
+            const managerMap = {};
+            const formatName = (u) => (`${u.firstName || ''} ${u.lastName || ''}`).trim() || u.username || 'N/A';
+            mUsers.forEach(u => managerMap[u.id] = formatName(u));
+            mAdmins.forEach(a => managerMap[a.id] = formatName(a));
+            mClientAdmins.forEach(ca => managerMap[ca.id] = formatName(ca));
+
+            const itemsWithHead = teamMembers.map(member => {
+                const teamHeadName = member.teamHeadId ? managerMap[member.teamHeadId] : null;
+                const referrerName = member.referId ? managerMap[member.referId] : null;
+                return {
+                    ...member,
+                    teamHeadName: teamHeadName || referrerName || null
+                };
+            });
+
             return reply.send({
                 success: true,
                 status: 200,
-                items: teamMembers,
+                items: itemsWithHead,
                 total,
                 pageNumber: page,
                 pageLimit: size,

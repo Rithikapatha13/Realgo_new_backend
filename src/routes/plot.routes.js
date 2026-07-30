@@ -749,4 +749,62 @@ export async function plotRoutes(fastify) {
             return res.code(500).send({ success: false, message: "Error fetching plots map data" });
         }
     });
+
+    // ===================== GET /api/public/plots-map-data/:projectId (Public View) =====================
+    fastify.get("/public/plots-map-data/:projectId", async (req, res) => {
+        try {
+            const { projectId } = req.params;
+
+            const [items, counts, project] = await Promise.all([
+                fastify.prisma.plot.findMany({
+                    where: { projectId },
+                    select: {
+                        id: true,
+                        plotNumber: true,
+                        status: true,
+                        facing: true,
+                        sqrYards: true,
+                        plotCategory: true,
+                    },
+                }),
+                fastify.prisma.plot.groupBy({
+                    by: ["status"],
+                    where: { projectId },
+                    _count: true,
+                }),
+                fastify.prisma.project.findUnique({
+                    where: { id: projectId },
+                    select: { projectName: true }
+                })
+            ]);
+
+            const stats = {
+                availableCount: 0,
+                bookedCount: 0,
+                registeredCount: 0,
+                holdCount: 0,
+            };
+
+            counts.forEach((c) => {
+                if (c.status === "AVAILABLE") stats.availableCount = c._count;
+                if (c.status === "BOOKED") stats.bookedCount = c._count;
+                if (c.status === "REGISTERED") stats.registeredCount = c._count;
+                if (c.status === "HOLD") stats.holdCount = c._count;
+            });
+
+            return {
+                success: true,
+                data: {
+                    items,
+                    projectName: project?.projectName || "",
+                    ...stats,
+                },
+                status: 200,
+            };
+        } catch (error) {
+            fastify.log.error(error);
+            return res.code(500).send({ success: false, message: "Error fetching public plots map data" });
+        }
+    });
 }
+
